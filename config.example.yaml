@@ -1,0 +1,32 @@
+# Copy to config.yaml on the server and edit — do not commit config.yaml with secrets.
+# --------------------------------
+
+host: "0.0.0.0"
+port: 8443
+
+# JWT settings — use a long random string in production
+jwt_secret: "CHANGE_ME"
+jwt_expire_days: 30
+
+service_token: ""
+service_token_mode: "off"  # off | email_only | all
+
+cdr_db_path: "/var/spool/mikopbx/storage/usbdisk1/mikopbx/astlogs/asterisk/cdr.db"
+config_db_path: "/path/to/mikopbx/conf/mikopbx.db"
+recording_base: ""
+
+cdr_docker_db_path: ""
+
+use_rest_api: false
+mikopbx_rest_url: "http://127.0.0.1"
+mikopbx_api_key: ""
+mikopbx_admin_login: ""
+mikopbx_admin_password: ""
+mikopbx_verify_ssl: true
+mikopbx_rest_timeout_seconds: 15
+
+# Users — bcrypt hashes only; generate locally:
+#   python -c "import bcrypt; print(bcrypt.hashpw(b'yourpassword', bcrypt.gensalt()).decode())"
+users:
+  - username: "admin"
+    password_hash: "$2b$12$REPLACE_WITH_BCRYPT_HASH"
