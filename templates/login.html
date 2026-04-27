@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Callspire Login</title>
+    {# base_path = external prefix from X-Forwarded-Prefix (e.g. /tool), or '' when direct #}
+    <link rel="icon" type="image/x-icon" href="{{ base_path }}/static/favicon.ico">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f1117;
+            color: #e4e6eb;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .card {
+            background: #1a1d27;
+            border: 1px solid #2a2d37;
+            border-radius: 12px;
+            padding: 40px;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+        }
+        h1 {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            text-align: center;
+        }
+        .subtitle {
+            color: #8b8fa3;
+            font-size: 13px;
+            text-align: center;
+            margin-bottom: 28px;
+        }
+        label {
+            display: block;
+            font-size: 13px;
+            color: #8b8fa3;
+            margin-bottom: 6px;
+        }
+        input[type="text"], input[type="password"] {
+            width: 100%;
+            padding: 10px 14px;
+            background: #0f1117;
+            border: 1px solid #2a2d37;
+            border-radius: 8px;
+            color: #e4e6eb;
+            font-size: 14px;
+            margin-bottom: 16px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        input:focus {
+            border-color: #4f8cff;
+        }
+        input[readonly] {
+            opacity: 0.7;
+            cursor: not-allowed;
+        }
+        button {
+            width: 100%;
+            padding: 12px;
+            background: #4f8cff;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        button:hover { background: #3d7be8; }
+        .error {
+            background: #3b1a1a;
+            color: #ff6b6b;
+            border: 1px solid #5c2a2a;
+            border-radius: 8px;
+            padding: 10px 14px;
+            font-size: 13px;
+            margin-bottom: 16px;
+            text-align: center;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 11px;
+            color: #555;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>Callspire PBX Gateway</h1>
+        <p class="subtitle">Sign in to authorize the Callspire softphone</p>
+
+        {% if error %}
+        <div class="error">{{ error }}</div>
+        {% endif %}
+
+        <form method="POST" action="{{ base_path }}/auth/login">
+            <input type="hidden" name="callback" value="{{ callback }}">
+            <input type="hidden" name="extension" value="{{ extension }}">
+
+            <label for="username">Username / Extension</label>
+            {% if extension %}
+            <input type="text" id="username" name="username" value="{{ extension }}" readonly>
+            {% else %}
+            <input type="text" id="username" name="username" required autocomplete="username" autofocus>
+            {% endif %}
+
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password" required autocomplete="current-password"
+                   {% if extension %}autofocus{% endif %}>
+            <button type="submit">Sign in</button>
+        </form>
+        <p class="footer">Callspire · MikoPBX integration</p>
+    </div>
+</body>
+</html>
