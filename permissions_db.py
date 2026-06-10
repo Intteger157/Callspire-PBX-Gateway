@@ -102,9 +102,128 @@ def init_db(db_path: str | None = None) -> None:
             prefs_json TEXT NOT NULL,
             updated_at TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS kommo_integration (
+            id                   INTEGER PRIMARY KEY CHECK (id = 1),
+            enabled              INTEGER NOT NULL DEFAULT 0,
+            client_id            TEXT NOT NULL DEFAULT '',
+            client_secret        TEXT NOT NULL DEFAULT '',
+            redirect_uri         TEXT NOT NULL DEFAULT '',
+            subdomain            TEXT NOT NULL DEFAULT '',
+            excluded_extensions  TEXT NOT NULL DEFAULT '[]'
+        );
+        INSERT OR IGNORE INTO kommo_integration (id) VALUES (1);
+
+        CREATE TABLE IF NOT EXISTS kommo_oauth_tokens (
+            id               INTEGER PRIMARY KEY CHECK (id = 1),
+            access_token     TEXT NOT NULL DEFAULT '',
+            refresh_token    TEXT NOT NULL DEFAULT '',
+            expires_at       TEXT NULL,
+            authorized_at    TEXT NULL,
+            referer          TEXT NOT NULL DEFAULT '',
+            account_base_url TEXT NOT NULL DEFAULT '',
+            auth_mode        TEXT NOT NULL DEFAULT 'oauth'
+        );
+        INSERT OR IGNORE INTO kommo_oauth_tokens (id) VALUES (1);
+
+        CREATE TABLE IF NOT EXISTS kommo_oauth_states (
+            state      TEXT PRIMARY KEY,
+            created_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL
+        );
     """)
+    _migrate_kommo_schema(conn)
     conn.commit()
     conn.close()
+
+
+def _migrate_kommo_schema(conn: sqlite3.Connection) -> None:
+    """Add Kommo tables/columns introduced after first deploy (safe to run repeatedly)."""
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS kommo_integration (
+            id                   INTEGER PRIMARY KEY CHECK (id = 1),
+            enabled              INTEGER NOT NULL DEFAULT 0,
+            client_id            TEXT NOT NULL DEFAULT '',
+            client_secret        TEXT NOT NULL DEFAULT '',
+            redirect_uri         TEXT NOT NULL DEFAULT '',
+            subdomain            TEXT NOT NULL DEFAULT '',
+            excluded_extensions  TEXT NOT NULL DEFAULT '[]'
+        )
+        """
+    )
+    conn.execute("INSERT OR IGNORE INTO kommo_integration (id) VALUES (1)")
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS kommo_oauth_tokens (
+            id               INTEGER PRIMARY KEY CHECK (id = 1),
+            access_token     TEXT NOT NULL DEFAULT '',
+            refresh_token    TEXT NOT NULL DEFAULT '',
+            expires_at       TEXT NULL,
+            authorized_at    TEXT NULL,
+            referer          TEXT NOT NULL DEFAULT '',
+            account_base_url TEXT NOT NULL DEFAULT '',
+            auth_mode        TEXT NOT NULL DEFAULT 'oauth'
+        )
+        """
+    )
+    conn.execute("INSERT OR IGNORE INTO kommo_oauth_tokens (id) VALUES (1)")
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS kommo_oauth_states (
+            state      TEXT PRIMARY KEY,
+            created_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL
+        )
+        """
+    )
+
+    token_cols = {row[1] for row in conn.execute("PRAGMA table_info(kommo_oauth_tokens)").fetchall()}
+    if "account_base_url" not in token_cols:
+        conn.execute(
+            "ALTER TABLE kommo_oauth_tokens ADD COLUMN account_base_url TEXT NOT NULL DEFAULT ''"
+        )
+    if "auth_mode" not in token_cols:
+        conn.execute(
+            "ALTER TABLE kommo_oauth_tokens ADD COLUMN auth_mode TEXT NOT NULL DEFAULT 'oauth'"
+        )
+
+    int_cols = {row[1] for row in conn.execute("PRAGMA table_info(kommo_integration)").fetchall()}
+    if "excluded_extensions" not in int_cols:
+        conn.execute(
+            "ALTER TABLE kommo_integration ADD COLUMN excluded_extensions TEXT NOT NULL DEFAULT '[]'"
+        )
+
+    state_cols = {
+        row[1] for row in conn.execute("PRAGMA table_info(kommo_oauth_states)").fetchall()
+    }
+    if "redirect_uri" not in state_cols:
+        conn.execute(
+            "ALTER TABLE kommo_oauth_states ADD COLUMN redirect_uri TEXT NOT NULL DEFAULT ''"
+        )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS kommo_extension_users (
+            extension        TEXT PRIMARY KEY,
+            kommo_user_id    INTEGER NOT NULL,
+            kommo_user_name  TEXT NOT NULL DEFAULT '',
+            updated_at       TEXT NOT NULL DEFAULT ''
+        )
+        """
+    )
+
+
+def _ensure_kommo_schema() -> None:
+    """Apply Kommo schema migrations before read/write (handles partial deploys)."""
+    conn = _conn()
+    try:
+        _migrate_kommo_schema(conn)
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def _conn() -> sqlite3.Connection:
@@ -518,6 +637,8 @@ def consume_provision_token(token_id: str) -> dict | None:
             return None
         try:
             expires = datetime.fromisoformat(row["expires_at"])
+            if expires.tzinfo is None:
+                expires = expires.replace(tzinfo=timezone.utc)
         except ValueError:
             return None
         if expires < datetime.now(timezone.utc):
@@ -681,5 +802,286 @@ def cleanup_expired_provision_tokens(keep_used_days: int = 30) -> int:
         )
         conn.commit()
         return cur.rowcount
+    finally:
+        conn.close()
+
+
+# --------------- Kommo / AmoCRM integration (shared company OAuth) ---------------
+
+def parse_kommo_excluded_extensions(raw) -> list[str]:
+    if isinstance(raw, list):
+        items = raw
+    elif isinstance(raw, str):
+        try:
+            items = json.loads(raw or "[]")
+        except Exception:
+            items = []
+    else:
+        items = []
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in items:
+        ext = str(item or "").strip()
+        if not ext or ext in seen:
+            continue
+        seen.add(ext)
+        out.append(ext)
+    return sorted(out, key=lambda s: (len(s), s))
+
+
+def is_kommo_extension_excluded(extension: str) -> bool:
+    ext = (extension or "").strip()
+    if not ext:
+        return False
+    cfg = get_kommo_integration()
+    excluded = parse_kommo_excluded_extensions(cfg.get("excluded_extensions") or "[]")
+    return ext in excluded
+
+
+def set_kommo_excluded_extensions(excluded_extensions: list[str]) -> None:
+    _ensure_kommo_schema()
+    excluded_json = json.dumps(parse_kommo_excluded_extensions(excluded_extensions))
+    conn = _conn()
+    try:
+        conn.execute(
+            "UPDATE kommo_integration SET excluded_extensions = ? WHERE id = 1",
+            (excluded_json,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_kommo_integration() -> dict:
+    _ensure_kommo_schema()
+    conn = _conn()
+    try:
+        row = conn.execute("SELECT * FROM kommo_integration WHERE id = 1").fetchone()
+        return dict(row) if row else {}
+    finally:
+        conn.close()
+
+
+def set_kommo_integration(
+    *,
+    enabled: bool,
+    client_id: str,
+    client_secret: str | None,
+    redirect_uri: str,
+    subdomain: str | None = None,
+    excluded_extensions: list[str] | None = None,
+) -> None:
+    _ensure_kommo_schema()
+    current = get_kommo_integration()
+    secret = client_secret if client_secret is not None else (current.get("client_secret") or "")
+    sub = subdomain if subdomain is not None else (current.get("subdomain") or "")
+    if excluded_extensions is not None:
+        excluded_json = json.dumps(parse_kommo_excluded_extensions(excluded_extensions))
+    else:
+        excluded_json = current.get("excluded_extensions") or "[]"
+    conn = _conn()
+    try:
+        conn.execute(
+            """
+            UPDATE kommo_integration
+            SET enabled = ?, client_id = ?, client_secret = ?, redirect_uri = ?, subdomain = ?,
+                excluded_extensions = ?
+            WHERE id = 1
+            """,
+            (
+                1 if enabled else 0,
+                (client_id or "").strip(),
+                secret,
+                (redirect_uri or "").strip(),
+                (sub or "").strip(),
+                excluded_json,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_kommo_oauth_tokens() -> dict:
+    _ensure_kommo_schema()
+    conn = _conn()
+    try:
+        row = conn.execute("SELECT * FROM kommo_oauth_tokens WHERE id = 1").fetchone()
+        return dict(row) if row else {}
+    finally:
+        conn.close()
+
+
+def set_kommo_oauth_tokens(
+    *,
+    access_token: str,
+    refresh_token: str,
+    expires_at: str | None,
+    referer: str = "",
+    account_base_url: str | None = None,
+    auth_mode: str | None = None,
+) -> None:
+    current = get_kommo_oauth_tokens()
+    base = account_base_url if account_base_url is not None else (current.get("account_base_url") or "")
+    mode = auth_mode if auth_mode is not None else (current.get("auth_mode") or "oauth")
+    conn = _conn()
+    try:
+        conn.execute(
+            """
+            UPDATE kommo_oauth_tokens
+            SET access_token = ?, refresh_token = ?, expires_at = ?, authorized_at = ?, referer = ?,
+                account_base_url = ?, auth_mode = ?
+            WHERE id = 1
+            """,
+            (
+                access_token or "",
+                refresh_token or "",
+                expires_at,
+                _now_iso(),
+                (referer or "").strip(),
+                (base or "").strip().rstrip("/"),
+                (mode or "oauth").strip() or "oauth",
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def clear_kommo_oauth_tokens() -> None:
+    _ensure_kommo_schema()
+    conn = _conn()
+    try:
+        conn.execute(
+            """
+            UPDATE kommo_oauth_tokens
+            SET access_token = '', refresh_token = '', expires_at = NULL, authorized_at = NULL, referer = '',
+                account_base_url = '', auth_mode = 'oauth'
+            WHERE id = 1
+            """
+        )
+        conn.execute("DELETE FROM kommo_oauth_states")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def create_kommo_oauth_state(*, redirect_uri: str = "", ttl_minutes: int = 15) -> str:
+    _ensure_kommo_schema()
+    state = secrets.token_urlsafe(32)
+    now = datetime.now(timezone.utc)
+    expires = now + timedelta(minutes=max(1, min(int(ttl_minutes), 60)))
+    conn = _conn()
+    try:
+        conn.execute(
+            """
+            INSERT INTO kommo_oauth_states (state, created_at, expires_at, redirect_uri)
+            VALUES (?, ?, ?, ?)
+            """,
+            (state, now.isoformat(), expires.isoformat(), (redirect_uri or "").strip()),
+        )
+        conn.commit()
+        return state
+    finally:
+        conn.close()
+
+
+def consume_kommo_oauth_state(state: str) -> dict | None:
+    """Return OAuth state metadata and delete the row (one-time use)."""
+    _ensure_kommo_schema()
+    state = (state or "").strip()
+    if not state:
+        return None
+    now = _now_iso()
+    conn = _conn()
+    try:
+        row = conn.execute(
+            """
+            SELECT state, redirect_uri FROM kommo_oauth_states
+            WHERE state = ? AND expires_at > ?
+            """,
+            (state, now),
+        ).fetchone()
+        if row is None:
+            return None
+        conn.execute("DELETE FROM kommo_oauth_states WHERE state = ?", (state,))
+        conn.commit()
+        return {"redirect_uri": (row["redirect_uri"] or "").strip()}
+    finally:
+        conn.close()
+
+
+def list_kommo_extension_users() -> dict[str, dict]:
+    """Return ``extension -> {kommo_user_id, kommo_user_name}`` for admin UI and session API."""
+    _ensure_kommo_schema()
+    conn = _conn()
+    try:
+        rows = conn.execute(
+            "SELECT extension, kommo_user_id, kommo_user_name FROM kommo_extension_users ORDER BY extension"
+        ).fetchall()
+        out: dict[str, dict] = {}
+        for row in rows:
+            ext = str(row["extension"] or "").strip()
+            if not ext:
+                continue
+            out[ext] = {
+                "kommo_user_id": int(row["kommo_user_id"]),
+                "kommo_user_name": (row["kommo_user_name"] or "").strip(),
+            }
+        return out
+    finally:
+        conn.close()
+
+
+def get_kommo_extension_user(extension: str) -> dict | None:
+    ext = (extension or "").strip()
+    if not ext:
+        return None
+    _ensure_kommo_schema()
+    conn = _conn()
+    try:
+        row = conn.execute(
+            "SELECT kommo_user_id, kommo_user_name FROM kommo_extension_users WHERE extension = ?",
+            (ext,),
+        ).fetchone()
+        if row is None:
+            return None
+        return {
+            "kommo_user_id": int(row["kommo_user_id"]),
+            "kommo_user_name": (row["kommo_user_name"] or "").strip(),
+        }
+    finally:
+        conn.close()
+
+
+def set_kommo_extension_user(
+    extension: str,
+    kommo_user_id: int | None,
+    kommo_user_name: str = "",
+) -> None:
+    ext = (extension or "").strip()
+    if not ext:
+        raise ValueError("extension is required")
+    _ensure_kommo_schema()
+    conn = _conn()
+    try:
+        if kommo_user_id is None or int(kommo_user_id) <= 0:
+            conn.execute("DELETE FROM kommo_extension_users WHERE extension = ?", (ext,))
+        else:
+            from datetime import datetime, timezone
+
+            now = datetime.now(timezone.utc).isoformat()
+            conn.execute(
+                """
+                INSERT INTO kommo_extension_users (extension, kommo_user_id, kommo_user_name, updated_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(extension) DO UPDATE SET
+                    kommo_user_id = excluded.kommo_user_id,
+                    kommo_user_name = excluded.kommo_user_name,
+                    updated_at = excluded.updated_at
+                """,
+                (ext, int(kommo_user_id), (kommo_user_name or "").strip(), now),
+            )
+        conn.commit()
     finally:
         conn.close()

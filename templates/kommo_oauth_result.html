@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Callspire — Kommo</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f1117;
+            color: #e4e6eb;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .card {
+            background: #1a1d27;
+            border: 1px solid #2a2d37;
+            border-radius: 12px;
+            padding: 40px;
+            width: 100%;
+            max-width: 460px;
+            text-align: center;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+        }
+        .icon {
+            width: 56px;
+            height: 56px;
+            margin: 0 auto 20px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            font-weight: 700;
+        }
+        .ok { background: #1b3d2d; color: #6ee7a8; }
+        .warn { background: #3d3414; color: #fbbf24; }
+        .fail { background: #3d1b1b; color: #f87171; }
+        h1 { font-size: 20px; font-weight: 600; margin-bottom: 10px; }
+        p { color: #8b8fa3; font-size: 14px; line-height: 1.5; text-align: left; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="icon {{ 'warn' if warn else ('ok' if success else 'fail') }}">{{ '!' if warn else ('✓' if success else '!') }}</div>
+        <h1>{{ title }}</h1>
+        <p>{{ message }}</p>
+    </div>
+</body>
+</html>

@@ -1,0 +1,5 @@
+# Дополнительные зависимости для gateway-web-softphone (если их ещё нет в основном requirements gateway)
+fastapi>=0.115.0
+httpx>=0.27.0
+starlette>=0.38.0
+itsdangerous>=2.0.0

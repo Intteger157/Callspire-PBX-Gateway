@@ -56,6 +56,13 @@
         .error-msg{color:#ff6b6b;font-size:13px;margin-top:8px}
         .toolbar{display:flex;align-items:center;gap:12px;margin-bottom:16px}
         .search-input{max-width:340px}
+        .kommo-actions{margin-top:20px;display:flex;flex-direction:column;gap:10px}
+        .kommo-actions-primary,.kommo-actions-secondary{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+        .kommo-toggle{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#8b8fa3;cursor:pointer;user-select:none;white-space:nowrap}
+        .kommo-toggle input{accent-color:#4f8cff;margin:0}
+        .kommo-toggle.excluded{color:#ff9f43}
+        .kommo-user-select{margin-top:6px;max-width:220px;width:100%;padding:6px 8px;border-radius:6px;border:1px solid #3a3f55;background:#1e2130;color:#e8eaf0;font-size:12px}
+        .kommo-user-select:disabled{opacity:.5;cursor:not-allowed}
 
         /* ---------- table ---------- */
         table{width:100%;border-collapse:collapse;margin-top:8px}
@@ -262,6 +269,14 @@
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M4 12h10M4 17h8"/><circle cx="18" cy="12" r="2"/></svg>
                         AMI &amp; Originate
                     </button>
+                    <button type="button" class="nav-sub" data-page="settings-auth" onclick="navigate('settings-auth',this)">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                        Auth &amp; sessions
+                    </button>
+                    <button type="button" class="nav-sub" data-page="settings-kommo" onclick="navigate('settings-kommo',this)">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+                        Kommo CRM
+                    </button>
                 </div>
             </div>
             <div class="nav-group open" data-group="softphone">
@@ -309,6 +324,69 @@
             </div>
         </div>
 
+        <!-- ==================== SETTINGS: Auth / JWT sessions ==================== -->
+        <div id="page-settings-auth" class="page">
+            <h2>Auth &amp; sessions</h2>
+            <p class="subtitle">How long desktop and web softphone login tokens stay valid. When a token expires, users lose outbound Caller ID list and integrations until they authorize again in the softphone settings.</p>
+            <div class="card" style="max-width:640px">
+                <label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;cursor:pointer">
+                    <input type="checkbox" id="jwt-never-expire" onchange="toggleJwtNeverExpire()">
+                    Never expire (perpetual session tokens)
+                </label>
+                <div class="row" id="jwt-days-row">
+                    <div style="max-width:200px">
+                        <label>Token lifetime (days)</label>
+                        <input type="number" id="jwt-expire-days" min="1" max="3650" value="30">
+                    </div>
+                </div>
+                <p class="subtitle" style="margin-top:12px;font-size:13px">Changing this affects only <strong>new</strong> logins. Existing tokens keep their original expiry — ask users to re-authorize in Callspire Settings if sessions already expired.</p>
+                <br>
+                <button type="button" class="btn" onclick="saveJwtConfig()">Save session settings</button>
+                <div id="jwt-status"></div>
+            </div>
+        </div>
+
+        <!-- ==================== SETTINGS: Kommo CRM ==================== -->
+        <div id="page-settings-kommo" class="page">
+            <h2>Kommo CRM</h2>
+            <p class="subtitle">Shared Kommo account for Callspire clients. Authorize once — desktop and web softphones use the same OAuth session.</p>
+            <div class="card" style="max-width:640px">
+                <label style="display:flex;align-items:center;gap:8px;margin-bottom:16px;cursor:pointer">
+                    <input type="checkbox" id="kommo-enabled">
+                    Enable Kommo integration for clients
+                </label>
+                <div class="row">
+                    <div><label>OAuth Client ID</label><input type="text" id="kommo-client-id" placeholder="From Kommo integration settings"></div>
+                </div>
+                <div class="row">
+                    <div><label>OAuth Client Secret</label><input type="password" id="kommo-client-secret" placeholder="Leave blank to keep current secret"></div>
+                </div>
+                <div class="row">
+                    <div><label>Redirect URI</label><input type="text" id="kommo-redirect-uri" placeholder="Auto-detected from gateway URL"></div>
+                </div>
+                <div class="row">
+                    <div>
+                        <label>Domain</label>
+                        <input type="text" id="kommo-domain" placeholder="mdkb.amocrm.ru or mdkb.kommo.com">
+                        <p id="kommo-account-url-hint" class="subtitle" style="margin:6px 0 0;font-size:12px;color:#6b7080"></p>
+                    </div>
+                </div>
+                <div class="kommo-actions">
+                    <div class="kommo-actions-primary">
+                        <button type="button" class="btn" onclick="saveKommoConfig()">Save settings</button>
+                        <button type="button" class="btn btn-outline" onclick="startKommoOAuth()">Authorize with Kommo</button>
+                        <button type="button" class="btn btn-outline" onclick="testKommoConnection()">Test token</button>
+                    </div>
+                    <div class="kommo-actions-secondary">
+                        <button type="button" class="btn btn-outline btn-sm" onclick="disconnectKommo()">Disconnect</button>
+                        <button type="button" class="btn btn-outline btn-sm" onclick="resetKommoRedirectUri()">Reset redirect URI</button>
+                        <button type="button" class="btn btn-outline btn-sm" onclick="navigateToKommoUsers()">Manage users</button>
+                    </div>
+                </div>
+                <div id="kommo-status" style="margin-top:12px"></div>
+            </div>
+        </div>
+
         <!-- ==================== SETTINGS: WebRTC (browser softphone) ==================== -->
         <div id="page-settings-webrtc" class="page">
             <h2>Browser calling</h2>
@@ -332,6 +410,7 @@
         <div id="page-users" class="page active">
             <h2>PBX Users</h2>
             <p class="subtitle">MikoPBX extensions from the web UI. <span style="color:#6b7080">Users</span> can be assigned outbound CallerIDs &mdash; <span style="color:#6b7080">System Extensions</span> (queues, IVRs, conferences, dialplan apps, mobile numbers) are read-only.</p>
+            <p id="users-kommo-hint" class="subtitle" style="font-size:12px;margin-top:-8px;margin-bottom:12px;display:none">Gateway Kommo: assign each extension to a <strong>Kommo user</strong> so calls attach from their account. Uncheck <strong>Use shared</strong> to exclude an extension (local Kommo in desktop app).</p>
 
             <div class="subtabs" role="tablist">
                 <button type="button" class="subtab-btn active" data-subtab="users" onclick="selectUsersSubtab('users')" role="tab">
@@ -360,8 +439,8 @@
             <div id="subpage-users" class="subpage">
                 <div class="card" style="padding:0;overflow:hidden">
                     <table>
-                        <thead><tr><th>Extension</th><th>Name</th><th>Assigned CallerIDs</th><th style="width:140px">Setup</th></tr></thead>
-                        <tbody id="users-tbody"><tr><td colspan="4" style="color:#555;padding:20px">Loading...</td></tr></tbody>
+                        <thead><tr><th>Extension</th><th>Name</th><th>Assigned CallerIDs</th><th style="width:130px">Gateway Kommo</th><th style="width:240px">Kommo user</th><th style="width:140px">Setup</th></tr></thead>
+                        <tbody id="users-tbody"><tr><td colspan="6" style="color:#555;padding:20px">Loading...</td></tr></tbody>
                     </table>
                 </div>
             </div>
@@ -694,6 +773,10 @@ function navigate(page, btn, opts) {
     } else if (page === 'settings-webrtc') {
         loadWebrtcConfig();
         loadConnectionStatus('webrtc');
+    } else if (page === 'settings-auth') {
+        loadJwtConfig();
+    } else if (page === 'settings-kommo') {
+        loadKommoConfig();
     }
     // Trunks page needs a live SIP peer status feed; stop it elsewhere so we
     // don't hit MikoPBX from background tabs the admin isn't looking at.
@@ -712,7 +795,7 @@ function applyHashRoute() {
         raw = 'settings-ami';
         try { if (history.replaceState) history.replaceState(null, '', '#settings-ami'); } catch (_) { /* ignore */ }
     }
-    const allowed = ['users', 'numbers', 'trunks', 'softphone-accounts', 'settings-ami', 'settings-webrtc'];
+    const allowed = ['users', 'numbers', 'trunks', 'softphone-accounts', 'settings-ami', 'settings-auth', 'settings-kommo', 'settings-webrtc'];
     const page = allowed.includes(raw) ? raw : 'users';
     const cur = document.querySelector('.page.active');
     if (cur && cur.id === 'page-' + page) return;
@@ -817,6 +900,295 @@ async function saveWebrtcConfig() {
     } catch(e) { el.innerHTML = '<span class="error-msg">'+e.message+'</span>'; }
 }
 
+function toggleJwtNeverExpire() {
+    const never = document.getElementById('jwt-never-expire').checked;
+    document.getElementById('jwt-days-row').style.opacity = never ? '0.45' : '1';
+    document.getElementById('jwt-expire-days').disabled = never;
+}
+async function loadJwtConfig() {
+    const el = document.getElementById('jwt-status');
+    try {
+        const c = await api('GET','/api/admin/jwt-config');
+        document.getElementById('jwt-never-expire').checked = !!c.never_expire;
+        document.getElementById('jwt-expire-days').value = c.never_expire ? 30 : (c.expire_days || 30);
+        toggleJwtNeverExpire();
+        el.innerHTML = c.never_expire
+            ? '<span class="success">Current policy: tokens never expire.</span>'
+            : ('<span class="success">Current policy: tokens expire after ' + escHtml(String(c.expire_days)) + ' days.</span>');
+    } catch(e) { console.error(e); }
+}
+async function saveJwtConfig() {
+    const el = document.getElementById('jwt-status');
+    try {
+        const never = document.getElementById('jwt-never-expire').checked;
+        const days = parseInt(document.getElementById('jwt-expire-days').value, 10) || 30;
+        const r = await api('POST','/api/admin/jwt-config', {
+            never_expire: never,
+            expire_days: days,
+        });
+        el.innerHTML = r.never_expire
+            ? '<span class="success">Saved. New tokens will not expire.</span>'
+            : ('<span class="success">Saved. New tokens expire after ' + escHtml(String(r.expire_days)) + ' days.</span>');
+    } catch(e) { el.innerHTML = '<span class="error-msg">'+e.message+'</span>'; }
+}
+
+function formatKommoProbeDetails(t) {
+    const rows = (t && (t.probe_details_after_refresh || t.probe_details)) || [];
+    if (!rows.length) return '';
+    return '<div class="conn-detail" style="margin-top:8px;font-size:12px;line-height:1.5">'
+        + rows.map(function(d) {
+            const base = escHtml(d.account_base_url || '?');
+            if (d.ok) return base + ': <span class="success">OK</span>' + (d.account_id ? ' (account #' + escHtml(String(d.account_id)) + ')' : '');
+            const err = escHtml(d.error || 'failed');
+            const code = d.status_code ? ' HTTP ' + escHtml(String(d.status_code)) : '';
+            return base + ': <span class="conn-badge-fail">' + err + code + '</span>';
+        }).join('<br>')
+        + '</div>';
+}
+
+function formatKommoJwtDetails(t) {
+    const j = (t && t.jwt) || {};
+    if (!j.account_id && !j.client_uuid && !j.user_id) return '';
+    let s = '<div class="conn-detail" style="margin-top:8px;font-size:12px;line-height:1.5">';
+    if (j.client_uuid) s += 'JWT integration: ' + escHtml(String(j.client_uuid)) + '<br>';
+    if (j.account_id) s += 'JWT account_id: ' + escHtml(String(j.account_id)) + '<br>';
+    if (j.user_id) s += 'JWT user_id: ' + escHtml(String(j.user_id)) + '<br>';
+    if (Array.isArray(j.scopes)) {
+        if (!j.scopes.length) s += '<span class="conn-badge-fail">JWT scopes: [] — enable CRM in Kommo «Allow access»</span><br>';
+        else s += 'JWT scopes: ' + escHtml(j.scopes.join(', ')) + '<br>';
+    }
+    if (t.crm_api_in_jwt === false) s += '<span class="conn-badge-fail">JWT has no CRM/API permission claims</span><br>';
+    if (t.client_id_matches_jwt === false) s += '<span class="conn-badge-fail">JWT integration ≠ gateway Client ID</span><br>';
+    return s + '</div>';
+}
+
+let kommoExcludeExtensions = new Set();
+let kommoIntegrationEnabled = false;
+let kommoExtensionUsers = {};
+let kommoUsersList = [];
+
+async function loadKommoUsersList() {
+    if (!kommoIntegrationEnabled) {
+        kommoUsersList = [];
+        return;
+    }
+    try {
+        const r = await api('GET', '/api/admin/kommo-users');
+        kommoUsersList = r.users || [];
+    } catch (e) {
+        kommoUsersList = [];
+        console.warn('Kommo users list:', e.message || e);
+    }
+}
+
+function kommoUserSelectHtml(ext, excluded) {
+    if (!kommoIntegrationEnabled || excluded) {
+        return '<span style="color:#555">—</span>';
+    }
+    const mapped = kommoExtensionUsers[String(ext)] || {};
+    const selected = mapped.kommo_user_id != null ? String(mapped.kommo_user_id) : '';
+    let opts = '<option value="">— OAuth owner —</option>';
+    for (const u of kommoUsersList) {
+        const id = String(u.id);
+        const label = (u.name || u.email || ('User ' + id)).trim();
+        opts += '<option value="' + escAttr(id) + '"' + (id === selected ? ' selected' : '') + '>' + escHtml(label) + '</option>';
+    }
+    return '<select class="kommo-user-select" onclick="event.stopPropagation()" onchange="setKommoExtensionUser(\'' + escAttr(ext) + '\', this.value)">' + opts + '</select>';
+}
+
+async function setKommoExtensionUser(ext, userId) {
+    const id = String(ext || '').trim();
+    if (!id) return;
+    const parsed = userId ? parseInt(String(userId), 10) : null;
+    const u = parsed ? kommoUsersList.find(function(x) { return String(x.id) === String(parsed); }) : null;
+    const name = u ? (u.name || u.email || '') : '';
+    try {
+        await api('POST', '/api/admin/kommo-extension-user', {
+            extension: id,
+            kommo_user_id: parsed && parsed > 0 ? parsed : null,
+            kommo_user_name: name,
+        });
+        if (parsed && parsed > 0) {
+            kommoExtensionUsers[id] = { kommo_user_id: parsed, kommo_user_name: name };
+        } else {
+            delete kommoExtensionUsers[id];
+        }
+    } catch (e) {
+        renderUsersTable();
+        const el = document.getElementById('users-status');
+        if (el) el.innerHTML = '<span class="error-msg">' + escHtml(e.message) + '</span>';
+    }
+}
+
+function navigateToKommoUsers() {
+    const btn = document.querySelector('.nav-sub[data-page="users"]');
+    navigate('users', btn);
+    const hint = document.getElementById('users-kommo-hint');
+    if (hint) hint.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function updateUsersKommoHint() {
+    const hint = document.getElementById('users-kommo-hint');
+    if (hint) hint.style.display = kommoIntegrationEnabled ? '' : 'none';
+}
+
+async function toggleUserKommoGateway(ext, useGateway) {
+    const id = String(ext || '').trim();
+    if (!id) return;
+    if (useGateway) kommoExcludeExtensions.delete(id);
+    else kommoExcludeExtensions.add(id);
+    try {
+        await api('POST', '/api/admin/kommo-excluded-extensions', {
+            excluded_extensions: Array.from(kommoExcludeExtensions).sort(function(a, b) {
+                return a.length - b.length || a.localeCompare(b);
+            }),
+        });
+    } catch (e) {
+        if (useGateway) kommoExcludeExtensions.add(id);
+        else kommoExcludeExtensions.delete(id);
+        renderUsersTable();
+        const el = document.getElementById('users-status');
+        if (el) el.innerHTML = '<span class="error-msg">' + escHtml(e.message) + '</span>';
+    }
+}
+
+async function loadKommoConfig() {
+    const el = document.getElementById('kommo-status');
+    try {
+        const c = await api('GET','/api/admin/kommo-config');
+        document.getElementById('kommo-enabled').checked = !!c.enabled;
+        document.getElementById('kommo-client-id').value = c.client_id || '';
+        document.getElementById('kommo-client-secret').value = '';
+        document.getElementById('kommo-client-secret').placeholder = c.client_secret === '***' ? 'Secret is set (leave blank to keep)' : 'Enter client secret';
+        document.getElementById('kommo-redirect-uri').value = c.redirect_uri || '';
+        document.getElementById('kommo-domain').value = c.domain || c.subdomain || '';
+        const urlHint = document.getElementById('kommo-account-url-hint');
+        if (urlHint) {
+            if (c.account_base_url) {
+                urlHint.textContent = 'API host: ' + c.account_base_url + (c.authorized ? ' (from OAuth)' : '');
+            } else {
+                urlHint.textContent = 'Full Kommo host or short name (mdkb → mdkb.amocrm.ru). Filled automatically after Authorize.';
+            }
+        }
+        kommoIntegrationEnabled = !!c.enabled;
+        kommoExcludeExtensions = new Set((c.excluded_extensions || []).map(function(x) { return String(x || '').trim(); }).filter(Boolean));
+        kommoExtensionUsers = c.extension_users || {};
+        updateUsersKommoHint();
+        if (kommoIntegrationEnabled) await loadKommoUsersList();
+        let msg = '';
+        if (c.authorized) {
+            try {
+                const t = await api('POST','/api/admin/kommo/test', {});
+                const ver = t.impl_version ? (' <span class="conn-detail">(' + escHtml(String(t.impl_version)) + ')</span>') : '';
+                const apiOk = !!(t.probe_ok || t.probe_ok_after_refresh || t.account_probe_ok);
+                if (apiOk && t.token_valid) {
+                    msg = '<span class="success">Connected';
+                    if (c.domain || c.subdomain) msg += ' — ' + escHtml(c.domain || c.subdomain);
+                    msg += ' (' + escHtml(t.account_base_url || '') + ').</span>' + ver;
+                    if (c.token_expires_at) {
+                        msg += ' <span class="conn-detail">Token until ' + escHtml(c.token_expires_at) + '.</span>';
+                    }
+                } else {
+                    msg = '<span class="conn-badge-fail">Kommo API not working';
+                    if (c.domain || c.subdomain) msg += ' for ' + escHtml(c.domain || c.subdomain);
+                    msg += '.</span>' + ver;
+                    msg += ' <span class="conn-badge-fail">' + escHtml(t.message || t.refresh_error || 'Account API probe failed (401). Re-authorize after fixing integration in Kommo.') + '</span>';
+                    msg += formatKommoProbeDetails(t);
+                    msg += formatKommoJwtDetails(t);
+                }
+            } catch (te) {
+                msg = '<span class="conn-badge-fail">Authorized';
+                if (c.domain || c.subdomain) msg += ' for ' + escHtml(c.domain || c.subdomain);
+                msg += ', but API test failed: ' + escHtml(te.message) + '</span>';
+            }
+        } else if (c.client_id) {
+            msg = '<span class="conn-badge-fail">Not authorized — click Authorize with Kommo.</span>';
+        } else {
+            msg = '<span class="conn-detail">Enter Client ID and Secret, save, then authorize.</span>';
+        }
+        el.innerHTML = msg;
+    } catch(e) { console.error(e); if (el) el.innerHTML = '<span class="error-msg">'+escHtml(e.message)+'</span>'; }
+}
+async function saveKommoConfig() {
+    const el = document.getElementById('kommo-status');
+    try {
+        const body = {
+            enabled: document.getElementById('kommo-enabled').checked,
+            client_id: document.getElementById('kommo-client-id').value.trim(),
+            redirect_uri: document.getElementById('kommo-redirect-uri').value.trim(),
+            domain: document.getElementById('kommo-domain').value.trim(),
+        };
+        const sec = document.getElementById('kommo-client-secret').value;
+        if (sec) body.client_secret = sec;
+        await api('POST','/api/admin/kommo-config', body);
+        el.innerHTML = '<span class="success">Saved.</span>';
+        loadKommoConfig();
+    } catch(e) { el.innerHTML = '<span class="error-msg">'+e.message+'</span>'; }
+}
+async function resetKommoRedirectUri() {
+    const el = document.getElementById('kommo-status');
+    try {
+        const c = await api('GET','/api/admin/kommo-config');
+        document.getElementById('kommo-redirect-uri').value = c.default_redirect_uri || '';
+        await saveKommoConfig();
+        el.innerHTML = '<span class="success">Redirect URI reset to auto-detected value. Update the same URL in Kommo integration settings.</span>';
+    } catch(e) { el.innerHTML = '<span class="error-msg">'+e.message+'</span>'; }
+}
+async function startKommoOAuth() {
+    const el = document.getElementById('kommo-status');
+    try {
+        const clientId = document.getElementById('kommo-client-id').value.trim();
+        const sec = document.getElementById('kommo-client-secret').value;
+        if (!clientId) {
+            el.innerHTML = '<span class="error-msg">Enter OAuth Client ID first.</span>';
+            return;
+        }
+        const current = await api('GET','/api/admin/kommo-config');
+        if (!sec && current.client_secret !== '***') {
+            el.innerHTML = '<span class="error-msg">Enter OAuth Client Secret, then click Save settings or Authorize again.</span>';
+            return;
+        }
+        // Persist form values before OAuth — Authorize reads credentials from the server DB.
+        const body = {
+            enabled: document.getElementById('kommo-enabled').checked,
+            client_id: clientId,
+            redirect_uri: document.getElementById('kommo-redirect-uri').value.trim(),
+            domain: document.getElementById('kommo-domain').value.trim(),
+        };
+        if (sec) body.client_secret = sec;
+        await api('POST','/api/admin/kommo-config', body);
+
+        const r = await api('POST','/api/admin/kommo/oauth/start', {});
+        if (r.auth_url) window.open(r.auth_url, '_blank', 'noopener');
+        const ru = r.redirect_uri ? (' Using redirect URI: <code>' + escHtml(r.redirect_uri) + '</code>') : '';
+        el.innerHTML = '<span class="success">Settings saved. Authorization page opened — complete login in the new tab, then refresh this page.</span>' + ru;
+    } catch(e) { el.innerHTML = '<span class="error-msg">'+e.message+'</span>'; }
+}
+async function disconnectKommo() {
+    const el = document.getElementById('kommo-status');
+    try {
+        await api('POST','/api/admin/kommo/disconnect', {});
+        el.innerHTML = '<span class="success">Kommo disconnected.</span>';
+        loadKommoConfig();
+    } catch(e) { el.innerHTML = '<span class="error-msg">'+e.message+'</span>'; }
+}
+async function testKommoConnection() {
+    const el = document.getElementById('kommo-status');
+    try {
+        el.innerHTML = '<span class="conn-detail">Testing Kommo token…</span>';
+        const t = await api('POST','/api/admin/kommo/test', {});
+        const ver = t.impl_version ? (' <span class="conn-detail">(' + escHtml(String(t.impl_version)) + ')</span>') : '';
+        const apiOk = !!(t.probe_ok || t.probe_ok_after_refresh || t.account_probe_ok);
+        if (apiOk && t.token_valid) {
+            el.innerHTML = '<span class="success">' + escHtml(t.message || 'Token OK') + '</span>' + ver;
+        } else {
+            el.innerHTML = '<span class="conn-badge-fail">' + escHtml(t.message || t.refresh_error || 'Account API probe failed (401)') + '</span>' + ver
+                + formatKommoProbeDetails(t)
+                + formatKommoJwtDetails(t);
+        }
+    } catch(e) { el.innerHTML = '<span class="error-msg">'+e.message+'</span>'; }
+}
+
 function renderConnBadge(ok) {
     return ok
         ? '<span class="conn-badge-ok">Reachable</span>'
@@ -872,22 +1244,28 @@ function isRealUserExt(ext) {
 
 async function loadUsers() {
     try {
-        const [extR, cidR, permR, namesR] = await Promise.all([
+        const [extR, cidR, permR, namesR, kommoR] = await Promise.all([
             api('GET','/api/extensions'),
             api('GET','/api/trunk-callerids'),
             api('GET','/api/admin/permissions'),
             api('GET','/api/admin/callerid-names'),
+            api('GET','/api/admin/kommo-config').catch(function() { return { enabled: false, excluded_extensions: [] }; }),
         ]);
         allExtensions = extR.extensions || [];
         allCallerIds = cidR.callerids || [];
         calleridNames = namesR.names || {};
         currentPermissions = {};
         for (const p of (permR.permissions || [])) currentPermissions[p.extension] = new Set(p.callerids);
+        kommoIntegrationEnabled = !!kommoR.enabled;
+        kommoExcludeExtensions = new Set((kommoR.excluded_extensions || []).map(function(x) { return String(x || '').trim(); }).filter(Boolean));
+        kommoExtensionUsers = kommoR.extension_users || {};
+        updateUsersKommoHint();
+        if (kommoIntegrationEnabled) await loadKommoUsersList();
         renderUsersTable();
         renderSystemTable();
         updateUsersSubtabCounts();
     } catch(e) {
-        document.getElementById('users-tbody').innerHTML = '<tr><td colspan="3" class="error-msg">'+e.message+'</td></tr>';
+        document.getElementById('users-tbody').innerHTML = '<tr><td colspan="6" class="error-msg">'+e.message+'</td></tr>';
         document.getElementById('system-tbody').innerHTML = '<tr><td colspan="3" class="error-msg">'+e.message+'</td></tr>';
     }
 }
@@ -940,7 +1318,7 @@ function escAttr(s) {
 function renderUsersTable() {
     const tbody = document.getElementById('users-tbody');
     const realUsers = allExtensions.filter(isRealUserExt);
-    if (!realUsers.length) { tbody.innerHTML = '<tr><td colspan="4" style="color:#555">No users found.</td></tr>'; return; }
+    if (!realUsers.length) { tbody.innerHTML = '<tr><td colspan="6" style="color:#555">No users found.</td></tr>'; return; }
     const q = usersSearchQuery.trim().toLowerCase();
     const filtered = !q
         ? realUsers
@@ -948,19 +1326,24 @@ function renderUsersTable() {
             String(ext.extension || '').toLowerCase().includes(q) ||
             String(ext.name || '').toLowerCase().includes(q)
         );
-    if (!filtered.length) { tbody.innerHTML = '<tr><td colspan="4" style="color:#555">No users match your search.</td></tr>'; return; }
+    if (!filtered.length) { tbody.innerHTML = '<tr><td colspan="6" style="color:#555">No users match your search.</td></tr>'; return; }
     let html = '';
     for (const ext of filtered) {
         const perms = currentPermissions[ext.extension] || new Set();
         const nums = [...perms].sort();
         const cell = nums.length ? formatCallerIdsChips(nums) : '<span style="color:#555">None</span>';
-        // Provisioning link — the admin clicks, we generate a one-time token,
-        // then show a callspire:// URL the user can paste into their softphone.
         const provBtn = `<button type="button" class="btn btn-sm btn-outline" onclick="event.stopPropagation();openProvisionModal('${escAttr(ext.extension)}','${escAttr(ext.name || '')}')" title="Generate one-time setup link for the desktop softphone">Generate link</button>`;
+        const excluded = kommoExcludeExtensions.has(String(ext.extension || '').trim());
+        const kommoCell = kommoIntegrationEnabled
+            ? `<label class="kommo-toggle${excluded ? ' excluded' : ''}" onclick="event.stopPropagation()"><input type="checkbox"${excluded ? '' : ' checked'} onchange="toggleUserKommoGateway('${escAttr(ext.extension)}', this.checked)">Use shared</label>`
+            : '<span style="color:#555">—</span>';
+        const kommoUserCell = kommoUserSelectHtml(ext.extension, excluded);
         html += `<tr class="user-row" data-ext="${escAttr(ext.extension)}" data-name="${escAttr(ext.name || '')}" ondblclick="openUserCallerIdsModalFromRow(this)">
             <td style="vertical-align:top"><strong>${escHtml(ext.extension)}</strong></td>
             <td style="color:#8b8fa3;vertical-align:top">${escHtml(ext.name || '')}</td>
             <td style="vertical-align:top">${cell}</td>
+            <td style="vertical-align:top">${kommoCell}</td>
+            <td style="vertical-align:top">${kommoUserCell}</td>
             <td style="vertical-align:top">${provBtn}</td>
         </tr>`;
     }
@@ -1381,9 +1764,11 @@ function stopTrunkHealthPolling() {
 
 // ==================== Softphone provisioning links ====================
 let provisionCurrent = { extension: '', name: '', ttlMinutes: 30 };
+let provisionProxyBase = '';
 
 async function openProvisionModal(extension, displayName) {
     provisionCurrent = { extension, name: displayName || '', ttlMinutes: 30 };
+    provisionProxyBase = '';
     const sub = document.getElementById('provision-sub');
     if (sub) {
         const who = displayName ? (escHtml(displayName) + ' &lt;' + escHtml(extension) + '&gt;') : ('ext ' + escHtml(extension));
@@ -1414,6 +1799,7 @@ async function regenerateProvisionLink() {
             extension: provisionCurrent.extension,
             ttl_minutes: provisionCurrent.ttlMinutes,
         });
+        if (r.proxy_url) provisionProxyBase = String(r.proxy_url).replace(/\/$/, '');
         if (inp) inp.value = buildProvisionUrl(r.token_id);
         if (ttlEl) ttlEl.textContent = (r.ttl_minutes || 30) + ' minutes';
         if (statusEl) statusEl.innerHTML = '<span class="success">Link ready — remember to send it over a private channel.</span>';
@@ -1424,11 +1810,10 @@ async function regenerateProvisionLink() {
 }
 
 function buildProvisionUrl(tokenId) {
-    // The desktop app needs to know which proxy to redeem the token against.
-    // Use the admin panel's own origin + optional reverse-proxy prefix so the
-    // URL "just works" for whatever host the admin used to generate it.
+    // Prefer server-computed proxy_url (public_url + X-Forwarded-Prefix) so links
+    // stay correct when the admin opens the panel via localhost or an internal host.
     const prefix = String(CALLSPIRE_BASE || '').replace(/\/$/, '');
-    const proxy = location.origin + prefix;
+    const proxy = provisionProxyBase || (location.origin + prefix);
     // URLSearchParams handles URL-encoding for us — token_urlsafe is already
     // URL-safe, but this keeps things consistent if the admin ever changes
     // the token format.

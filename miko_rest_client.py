@@ -552,24 +552,84 @@ class MikoRestClient:
         ``{"data": {"secret": "..."}}`` on success; we tolerate raw-string
         payloads as well in case a build returns ``{"data": "..."}``.
 
+        **HTTP verb:** newer MikoPBX builds reject ``GET /sip:getSipSecret`` with
+        *405 Method not allowed* and require ``POST`` with a JSON body; older
+        installs only allow ``GET``. We try **POST first**, then fall back to
+        **GET** on 405 / "not allowed with HTTP …", mirroring
+        :meth:`force_sip_status_check`.
+
         Empty string when the username is unknown or the server returns no
-        secret. Any non-2xx response raises :class:`MikoRestError`.
+        secret. Any non-2xx response (after both attempts) raises
+        :class:`MikoRestError`.
         """
         username = (username or "").strip()
         if not username:
             return ""
-        payload = await self._request(
-            "GET",
-            "/sip:getSipSecret",
-            params={"username": username},
+
+        def _parse(payload: Any) -> str:
+            data = (payload or {}).get("data")
+            if isinstance(data, dict):
+                secret = (
+                    data.get("secret")
+                    or data.get("password")
+                    or data.get("sip_secret")
+                    or data.get("sipSecret")
+                    or ""
+                )
+                if not secret and isinstance(data.get("sipPeer"), dict):
+                    sp = data["sipPeer"]
+                    secret = (
+                        sp.get("secret")
+                        or sp.get("password")
+                        or sp.get("sip_secret")
+                        or ""
+                    )
+                return str(secret).strip()
+            if isinstance(data, str):
+                return data.strip()
+            return ""
+
+        # MikoPBX v3: GET is often disabled (405). Body shape differs by build:
+        # try ``peer`` first (same as getSipPeer in docs), then ``username``.
+        post_bodies: tuple[dict[str, str], ...] = (
+            {"peer": username},
+            {"username": username},
         )
-        data = (payload or {}).get("data")
-        if isinstance(data, dict):
-            secret = data.get("secret") or data.get("password") or ""
-            return str(secret).strip()
-        if isinstance(data, str):
-            return data.strip()
-        return ""
+
+        last_error: MikoRestError | None = None
+
+        for json_body in post_bodies:
+            try:
+                payload = await self._request(
+                    "POST",
+                    "/sip:getSipSecret",
+                    json_body=json_body,
+                )
+                secret = _parse(payload)
+                if secret:
+                    return secret
+                # 200 with empty secret — try alternate body key
+            except MikoRestError as exc:
+                msg = (exc.message or "").lower()
+                if exc.status in (400, 404, 422):
+                    last_error = exc
+                    continue
+                if exc.status == 405 or "not allowed with http" in msg:
+                    last_error = exc
+                    break
+                raise
+
+        try:
+            payload = await self._request(
+                "GET",
+                "/sip:getSipSecret",
+                params={"username": username},
+            )
+            return _parse(payload)
+        except MikoRestError:
+            if last_error is not None:
+                raise last_error
+            raise
 
     # ---- realtime ----
 

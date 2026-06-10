@@ -6,6 +6,8 @@ port: 8443
 
 # JWT settings — use a long random string in production
 jwt_secret: "CHANGE_ME"
+# Session lifetime for desktop/web softphone tokens (days). 0 = never expire.
+# Also editable in Admin → Auth & sessions. Existing tokens keep their old exp until re-login.
 jwt_expire_days: 30
 
 service_token: ""

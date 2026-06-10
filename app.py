@@ -50,10 +50,27 @@ from pjsip_secrets import get_peer_secret as get_pjsip_peer_secret
 from ami_client import ami_originate
 from connection_check import check_ami_tcp, check_wss_tls
 from miko_rest_client import MikoRestClient, MikoRestConfig, MikoRestError
+from app_kommo import register_kommo_routes
+
+try:
+    from gateway_web_softphone import install_web_softphone as _install_web_softphone
+except ImportError:
+    _install_web_softphone = None
 
 cfg = load_config()
 templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "templates"))
 security = HTTPBearer(auto_error=False)
+
+
+def _jwt_expire_days() -> int:
+    """Current JWT lifetime from config. ``0`` = never expire."""
+    val = cfg.get("jwt_expire_days")
+    if val is None:
+        return 30
+    try:
+        return max(0, int(val))
+    except (TypeError, ValueError):
+        return 30
 
 
 def _build_rest_client() -> MikoRestClient:
@@ -178,6 +195,12 @@ async def lifespan(app: FastAPI):
     else:
         _banner("[pbx-gateway] REST:      disabled (use_rest_api=False)")
 
+    jwt_days = _jwt_expire_days()
+    _banner(
+        "[pbx-gateway] JWT sessions: "
+        + ("never expire" if jwt_days == 0 else f"{jwt_days} day(s)")
+    )
+
     try:
         yield
     finally:
@@ -203,6 +226,24 @@ def _html_context(request: Request, **kwargs) -> dict:
     ctx: dict = {"base_path": _public_url_prefix(request)}
     ctx.update(kwargs)
     return ctx
+
+
+def _external_base_url(request: Request) -> str:
+    public = (cfg.get("public_url") or "").strip().rstrip("/")
+    prefix = _public_url_prefix(request)
+    if public:
+        if prefix and not public.endswith(prefix):
+            return public + prefix
+        return public
+    scheme = (request.headers.get("x-forwarded-proto") or request.url.scheme or "https").split(",")[0].strip()
+    host = (request.headers.get("x-forwarded-host") or request.headers.get("host") or "").split(",")[0].strip()
+    if not host:
+        host = f"127.0.0.1:{cfg['port']}"
+    return f"{scheme}://{host}{prefix}".rstrip("/")
+
+
+def _kommo_default_redirect_uri(request: Request) -> str:
+    return f"{_external_base_url(request)}/oauth/kommo/callback"
 
 
 _static_dir = os.path.join(os.path.dirname(__file__), "static")
@@ -298,7 +339,7 @@ async def auth_login(request: Request, x_callspire_service_token: str | None = H
         app_user = authenticate_app_user(username, password)
         if app_user is not None:
             token = create_jwt(
-                app_user["email"], cfg["jwt_secret"], cfg["jwt_expire_days"],
+                app_user["email"], cfg["jwt_secret"], _jwt_expire_days(),
                 role="user",
                 extension=app_user.get("extension"),
                 must_change_password=app_user.get("must_change_password"),
@@ -308,7 +349,7 @@ async def auth_login(request: Request, x_callspire_service_token: str | None = H
         user = authenticate_user(username, password, cfg["users"])
         if user is not None:
             token = create_jwt(
-                user["username"], cfg["jwt_secret"], cfg["jwt_expire_days"],
+                user["username"], cfg["jwt_secret"], _jwt_expire_days(),
                 role="admin",
             )
 
@@ -316,7 +357,7 @@ async def auth_login(request: Request, x_callspire_service_token: str | None = H
         app_user = authenticate_app_user(username, password)
         if app_user is not None:
             token = create_jwt(
-                app_user["email"], cfg["jwt_secret"], cfg["jwt_expire_days"],
+                app_user["email"], cfg["jwt_secret"], _jwt_expire_days(),
                 role="user",
                 extension=app_user.get("extension"),
                 must_change_password=app_user.get("must_change_password"),
@@ -326,7 +367,7 @@ async def auth_login(request: Request, x_callspire_service_token: str | None = H
         mikopbx_user = authenticate_mikopbx_user(username, password, cfg["config_db_path"])
         if mikopbx_user is not None:
             token = create_jwt(
-                mikopbx_user["extension"], cfg["jwt_secret"], cfg["jwt_expire_days"],
+                mikopbx_user["extension"], cfg["jwt_secret"], _jwt_expire_days(),
                 role="user", name=mikopbx_user.get("name"),
             )
 
@@ -382,7 +423,7 @@ async def api_login(body: LoginRequest, x_callspire_service_token: str | None = 
         app_user = authenticate_app_user(username, password)
         if app_user is not None:
             token = create_jwt(
-                app_user["email"], cfg["jwt_secret"], cfg["jwt_expire_days"],
+                app_user["email"], cfg["jwt_secret"], _jwt_expire_days(),
                 role="user",
                 extension=app_user.get("extension"),
                 must_change_password=app_user.get("must_change_password"),
@@ -397,7 +438,7 @@ async def api_login(body: LoginRequest, x_callspire_service_token: str | None = 
     user = authenticate_user(username, password, cfg["users"])
     if user is not None:
         token = create_jwt(
-            user["username"], cfg["jwt_secret"], cfg["jwt_expire_days"],
+            user["username"], cfg["jwt_secret"], _jwt_expire_days(),
             role="admin",
         )
         return {"token": token, "role": "admin"}
@@ -405,7 +446,7 @@ async def api_login(body: LoginRequest, x_callspire_service_token: str | None = 
     app_user = authenticate_app_user(username, password)
     if app_user is not None:
         token = create_jwt(
-            app_user["email"], cfg["jwt_secret"], cfg["jwt_expire_days"],
+            app_user["email"], cfg["jwt_secret"], _jwt_expire_days(),
             role="user",
             extension=app_user.get("extension"),
             must_change_password=app_user.get("must_change_password"),
@@ -420,7 +461,7 @@ async def api_login(body: LoginRequest, x_callspire_service_token: str | None = 
     mikopbx_user = authenticate_mikopbx_user(username, password, cfg["config_db_path"])
     if mikopbx_user is not None:
         token = create_jwt(
-            mikopbx_user["extension"], cfg["jwt_secret"], cfg["jwt_expire_days"],
+            mikopbx_user["extension"], cfg["jwt_secret"], _jwt_expire_days(),
             role="user", name=mikopbx_user.get("name"),
         )
         return {"token": token, "role": "user", "extension": mikopbx_user.get("extension"), "must_change_password": False}
@@ -444,7 +485,7 @@ async def winapp_auth(body: LoginRequest):
         raise HTTPException(401, "Invalid username or password")
 
     token = create_jwt(
-        mikopbx_user["extension"], cfg["jwt_secret"], cfg["jwt_expire_days"],
+        mikopbx_user["extension"], cfg["jwt_secret"], _jwt_expire_days(),
         role="user", name=mikopbx_user.get("name"),
     )
     return {"token": token, "role": "user", "extension": mikopbx_user.get("extension"), "must_change_password": False}
@@ -669,12 +710,24 @@ async def originate_call(body: OriginateRequest, user: dict = Depends(require_jw
             f"CallerID '{callerid_norm}' is not permitted for extension {extension}",
         )
 
+    ring_raw = (body.ring_extension or "").strip()
+    if ring_raw.upper().endswith("-WS"):
+        ring_raw = ring_raw[:-3]
+    ring_extension = ring_raw or extension
+
     ami_cfg = permissions_db.get_ami_config()
     originate_id = uuid.uuid4().hex[:16]
 
+    if ring_extension != extension:
+        print(
+            f"[originate] JWT ext={extension} ring_extension={ring_extension} "
+            f"dst={destination} callerid={callerid_norm}",
+            flush=True,
+        )
+
     result = await ami_originate(
         config=ami_cfg,
-        extension=extension,
+        extension=ring_extension,
         destination=destination,
         callerid=callerid_norm,
         originate_id=originate_id,
@@ -1347,6 +1400,8 @@ async def admin_generate_provision_token(body: ProvisionGenerateRequest, admin: 
         "extension": token["extension"],
         "expires_at": token["expires_at"],
         "ttl_minutes": token["ttl_minutes"],
+        # Authoritative redeem base for callspire:// links (honours public_url + X-Forwarded-Prefix).
+        "proxy_url": _external_base_url(request),
     }
 
 
@@ -1544,6 +1599,34 @@ async def admin_set_webrtc_config(body: WebrtcPublicConfigRequest, _admin: dict 
     return {"success": True}
 
 
+
+# ======================= Admin: JWT / session lifetime =======================
+
+@app.get("/api/admin/jwt-config")
+async def admin_get_jwt_config(_admin: dict = Depends(require_admin)):
+    days = _jwt_expire_days()
+    return {
+        "expire_days": days,
+        "never_expire": days == 0,
+    }
+
+
+class JwtConfigRequest(BaseModel):
+    expire_days: int = 30
+    never_expire: bool = False
+
+
+@app.post("/api/admin/jwt-config")
+async def admin_set_jwt_config(body: JwtConfigRequest, _admin: dict = Depends(require_admin)):
+    from config import set_jwt_expire_days
+
+    days = 0 if body.never_expire else max(1, min(int(body.expire_days), 3650))
+    cfg["jwt_expire_days"] = set_jwt_expire_days(days)
+    return {
+        "success": True,
+        "expire_days": cfg["jwt_expire_days"],
+        "never_expire": cfg["jwt_expire_days"] == 0,
+    }
 @app.get("/api/admin/connection-status")
 async def admin_connection_status(_admin: dict = Depends(require_admin)):
     """TCP/TLS reachability from this server (not a full SIP register or WebSocket handshake)."""
@@ -1563,6 +1646,16 @@ async def admin_connection_status(_admin: dict = Depends(require_admin)):
     }
 
 
+
+register_kommo_routes(
+    app,
+    cfg=cfg,
+    require_admin=require_admin,
+    require_jwt=require_jwt,
+    templates=templates,
+    html_context=_html_context,
+    kommo_default_redirect_uri=_kommo_default_redirect_uri,
+)
 # ======================= Admin panel (HTML) =======================
 
 @app.get("/admin", response_class=HTMLResponse)
@@ -1570,18 +1663,34 @@ async def admin_page(request: Request):
     return templates.TemplateResponse(request, "admin.html", context=_html_context(request))
 
 
+
+# ======================= Browser softphone (SPA + /api session) =======================
+# After all API routes. Optional: WEB_SOFTPHONE_ENABLED=0, WEB_SOFTPHONE_SKIP_ROOT_REDIRECT=1
+if _install_web_softphone is not None:
+    _install_web_softphone(app)
+else:
+    print("[pbx-gateway] Web softphone: disabled (gateway_web_softphone package not installed)", flush=True)
 # ======================= Run =======================
 
 def main():
-    uvicorn.run(
+    try:
+        uvicorn.run(
         "app:app",
         host=cfg["host"],
         port=cfg["port"],
         ssl_certfile=cfg.get("ssl_certfile"),
         ssl_keyfile=cfg.get("ssl_keyfile"),
         log_level="info",
-    )
+        )
+    except Exception as exc:
+        import traceback
+        print(f"[pbx-gateway] FATAL startup error: {exc}", flush=True)
+        traceback.print_exc()
+        raise
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception:
+        raise SystemExit(1)
