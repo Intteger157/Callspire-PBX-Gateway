@@ -1,21 +1,29 @@
-# Callspire PBX Gateway + веб-софтфон
+# Callspire PBX Gateway
 
-Здесь лежит **всё, что относится к встраиванию веб-UI в gateway**. Основной код gateway (`app.py`, `config.yaml`, работа с MikoPBX) у вас может жить в отдельном клоне репозитория — эту папку можно **скопировать в корень того репозитория** как есть (или держать submodule).
+**Канонический каталог gateway** в монорепо `Softphone-crossplatform`.  
+Все правки gateway, Kommo, CDR и деплой-скрипты — **только здесь** (`callspire-pbx-gateway/`).
+
+На сервере: `/opt/callspire-pbx-gateway/` (или `/opt/mikopbx-cdr-proxy/` — тот же код).
 
 ## Что лежит в каталоге
 
 ```
 callspire-pbx-gateway/
-├── README.md                    ← вы здесь: карта и шаги
-├── requirements-web-softphone.txt
-├── INTEGRATION_APP_EXAMPLE.py   ← фрагмент для вставки в app.py
-└── gateway-web-softphone/       ← Python-пакет (подключается в FastAPI)
-    ├── pyproject.toml
-    ├── README.md                ← детали API / env
-    └── gateway_web_softphone/
-        ├── __init__.py
-        ├── install.py           ← install_web_softphone(app) — одна строка в app.py
-        └── mount.py
+├── README.md                    ← вы здесь
+├── app.py, app_kommo.py         ← FastAPI gateway + Kommo API
+├── cdr_client.py, config.py     ← Miko CDR / config
+├── kommo_crm.py                 ← Kommo API (заметки о звонках)
+├── kommo_recording.py           ← CDR-first: запись + disposition для Amo
+├── kommo_call_worker.py         ← фоновые job upload
+├── kommo_jobs_db.py, kommo_store.py
+├── kommo_oauth.py, kommo_service.py, permissions_db.py
+├── DEPLOY_CHECKLIST.ru.md       ← что копировать на prod
+├── copy-to-server.ps1           ← быстрый scp Kommo-файлов
+├── deploy_kommo.ps1             ← деплой Kommo на Vultr
+├── scripts/deploy-to-prod.sh    ← полный rsync gateway
+├── templates/                   ← admin UI
+├── gateway-web-softphone/       ← веб-софтфон (mount в app.py)
+└── requirements.txt
 ```
 
 **Фронт (Vue/React и т.д.)** в этом репозитории не лежит: он в проекте **softphone-web** (репо `callspire-web-softphone` или соседняя папка). Собранный UI должен оказаться в каталоге **`dist`** (часто `softphone-web/dist`).
@@ -100,9 +108,9 @@ The gateway auto-detects the URL from its public address. Use **Reset redirect U
 
 In admin, **Domain** accepts a full host or short name:
 
-- `mdkb.amocrm.ru` (RU accounts)
-- `mdkb.kommo.com` (global Kommo)
-- `mdkb` (short name → defaults to `.amocrm.ru`)
+- `yourcompany.amocrm.ru` (RU accounts)
+- `yourcompany.kommo.com` (global Kommo)
+- `yourcompany` (short name → defaults to `.amocrm.ru`)
 
 Filled automatically after **Authorize with Kommo**.
 
@@ -110,12 +118,28 @@ Filled automatically after **Authorize with Kommo**.
 
 **PBX Users** → column **Gateway Kommo** → uncheck **Use shared** to exclude an extension from the company Kommo session (they can still use local Kommo in the desktop app).
 
-### Deploy files
+### Deploy (Kommo + CDR)
 
-After changes to Kommo auth, copy `kommo_oauth.py`, `kommo_service.py`, `app_kommo.py`, `permissions_db.py`, and `templates/admin.html`, then restart the gateway service.
+```powershell
+cd callspire-pbx-gateway
+.\copy-to-server.ps1 -Server root@vultr -GatewayPath /opt/callspire-pbx-gateway
+# или полный деплой:
+# ./scripts/deploy-to-prod.sh root@vultr /opt/callspire-pbx-gateway
+```
+
+Kommo upload pipeline (CDR → заметка в лид без записи):
+
+| Файл | Назначение |
+|------|------------|
+| `kommo_recording.py` | `resolve_pbx_call()` — CDR disposition, billsec, запись |
+| `kommo_call_worker.py` | job worker, CDR-first без 8-мин ожидания |
+| `kommo_crm.py` | `process_call()` → заметка в Kommo |
+| `kommo_jobs_db.py` | очередь jobs |
+
+См. **`DEPLOY_CHECKLIST.ru.md`**.
 
 ---
 
-## Если gateway в другом Git-репозитории
+## Не править копии в `deploy/web-softphone/gateway-patch/`
 
-Скопируйте **всю** папку `callspire-pbx-gateway` (или только `gateway-web-softphone` + `requirements-web-softphone.txt` + пример интеграции) в корень того репозитория и закоммитьте там.
+Устаревшие зеркала в монорепо — источник правды **только этот каталог**.

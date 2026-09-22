@@ -85,8 +85,8 @@ def get_admin_config(*, jwt_secret: str, default_redirect_uri: str) -> dict:
     }
 
 
-async def list_admin_kommo_users(*, jwt_secret: str) -> dict:
-    """Active Kommo users for mapping PBX extensions in admin UI."""
+async def _fetch_live_kommo_users(*, jwt_secret: str) -> tuple[list[dict], str]:
+    """Return (users, account_base) from Kommo API."""
     cfg = permissions_db.get_kommo_integration()
     tokens = permissions_db.get_kommo_oauth_tokens()
     if not tokens.get("access_token"):
@@ -101,8 +101,91 @@ async def list_admin_kommo_users(*, jwt_secret: str) -> dict:
         raise ValueError("Kommo account base URL is not configured")
 
     users = await fetch_kommo_users(account_base, access)
-    active = [u for u in users if u.get("is_active", True)]
-    return {"users": active, "count": len(active)}
+    return users, account_base
+
+
+def _build_admin_kommo_users_payload(live_users: list[dict]) -> dict:
+    """Active Kommo users for dropdown + assigned users missing from Kommo (assignments preserved)."""
+    by_id: dict[int, dict] = {}
+    for u in live_users:
+        try:
+            by_id[int(u["id"])] = u
+        except (TypeError, ValueError, KeyError):
+            continue
+
+    active = [u for u in live_users if u.get("is_active", True)]
+    merged: list[dict] = []
+    seen: set[int] = set()
+
+    for u in active:
+        uid = int(u["id"])
+        merged.append({**u, "missing_in_kommo": False})
+        seen.add(uid)
+
+    assigned = permissions_db.list_kommo_extension_users()
+    orphan_ids: set[int] = set()
+    for mapping in assigned.values():
+        try:
+            uid = int(mapping.get("kommo_user_id") or 0)
+        except (TypeError, ValueError):
+            continue
+        if uid > 0 and uid not in by_id:
+            orphan_ids.add(uid)
+
+    for uid in sorted(orphan_ids):
+        if uid in seen:
+            continue
+        name = ""
+        for mapping in assigned.values():
+            if int(mapping.get("kommo_user_id") or 0) == uid:
+                name = (mapping.get("kommo_user_name") or "").strip()
+                break
+        merged.append(
+            {
+                "id": uid,
+                "name": name or f"User {uid}",
+                "email": "",
+                "is_active": False,
+                "missing_in_kommo": True,
+            }
+        )
+        seen.add(uid)
+
+    inactive_live = [
+        u for u in live_users if not u.get("is_active", True) and int(u.get("id") or 0) not in seen
+    ]
+    for u in inactive_live:
+        uid = int(u["id"])
+        merged.append({**u, "missing_in_kommo": False})
+        seen.add(uid)
+
+    merged.sort(key=lambda u: ((u.get("name") or u.get("email") or str(u.get("id"))).lower()))
+    inactive_count = sum(1 for u in live_users if not u.get("is_active", True))
+    return {
+        "users": merged,
+        "count": len(merged),
+        "total_count": len(live_users),
+        "active_count": len(active),
+        "inactive_count": inactive_count,
+        "orphan_count": len(orphan_ids),
+    }
+
+
+async def list_admin_kommo_users(*, jwt_secret: str) -> dict:
+    """Kommo users for PBX extension mapping in admin UI."""
+    live_users, _account_base = await _fetch_live_kommo_users(jwt_secret=jwt_secret)
+    return _build_admin_kommo_users_payload(live_users)
+
+
+async def sync_admin_kommo_users(*, jwt_secret: str) -> dict:
+    """Refresh Kommo user list from AmoCRM; update stored names but keep all extension mappings."""
+    live_users, _account_base = await _fetch_live_kommo_users(jwt_secret=jwt_secret)
+    by_id = {int(u["id"]): u for u in live_users if u.get("id") is not None}
+    names_updated = permissions_db.refresh_kommo_extension_user_names(by_id)
+    payload = _build_admin_kommo_users_payload(live_users)
+    payload["names_updated"] = names_updated
+    payload["synced_at"] = datetime.now(timezone.utc).isoformat()
+    return payload
 
 
 def save_kommo_extension_user(
@@ -196,6 +279,33 @@ def _apply_extension_exclusion(status: dict, extension: str | None) -> dict:
     return out
 
 
+async def kommo_provision_hints_for_extension(*, jwt_secret: str, extension: str) -> dict:
+    """Desktop auto-setup after admin provisioning link — shared Kommo when mapped."""
+    import kommo_store
+
+    ext = (extension or "").strip()
+    status = await get_client_status_async(jwt_secret=jwt_secret, extension=ext or None)
+    mapped = kommo_store.get_extension_mapping(ext) if ext else {}
+    kommo_user_id = mapped.get("kommo_user_id")
+    kommo_user_name = (mapped.get("kommo_user_name") or "").strip()
+    excluded = bool(status.get("excluded"))
+    offer = bool(status.get("offer_gateway"))
+    # Mapped Kommo user in admin (and not excluded) — desktop enables gateway mode even
+    # if OAuth session is not ready yet (init retries after winapp-auth JWT).
+    upload_enabled = bool(kommo_user_id) and not excluded
+    authorized = bool(status.get("authorized"))
+    return {
+        "configure_gateway": upload_enabled,
+        "offer_gateway": offer,
+        "upload_enabled": upload_enabled,
+        "excluded": excluded,
+        "authorized": authorized,
+        "kommo_user_id": kommo_user_id,
+        "kommo_user_name": kommo_user_name,
+        "subdomain": status.get("subdomain") or "",
+    }
+
+
 def _decrypt_client_secret(enc: str, jwt_secret: str) -> str:
     if not enc:
         return ""
@@ -252,7 +362,7 @@ def _account_base_candidates(
 
 
 _INTEGRATION_API_HINT = (
-    "In Kommo → Settings → Integrations → your gateway app (dbdc7f97-…): open «Allow access» / "
+    "In Kommo → Settings → Integrations → your gateway app: open «Allow access» / "
     "«Предоставить доступ» and enable CRM API (contacts, leads, account data). "
     "If the integration was disabled by an admin, re-install it and Authorize again. "
     "If the Windows softphone already works with another integration (fca4e256-…), use that "

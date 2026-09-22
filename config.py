@@ -30,7 +30,10 @@ _defaults = {
     # only inside the container (common bind-mount mismatch).
     "cdr_docker_db_path": "",
     "config_db_path": "/var/spool/mikopbx/cf/conf/mikopbx.db",
-    "recording_base": "/var/spool/mikopbx",
+    # Host mount for Miko ``/storage/...`` paths in CDR recordingfile column.
+    # When cdr.db lives under ``.../storage/usbdisk1/...``, recordings are under
+    # the same ``.../storage/`` prefix — not ``/var/spool/mikopbx`` alone.
+    "recording_base": "/var/spool/mikopbx/storage",
     # Source of plaintext SIP secrets for browser WebRTC (MikoPBX encrypts m_Sip.secret
     # in the DB, but writes the real password into pjsip.conf at config-regen time).
     # If ``mikopbx_docker_container`` is non-empty, the proxy runs ``docker exec <c> cat <path>``
@@ -57,6 +60,24 @@ _defaults = {
     # (so the proxy stays bit-for-bit backwards-compatible on existing hosts).
     # Turn on per-PBX once the API key / admin creds are verified.
     "use_rest_api": False,
+    # PBX stores CDR timestamps as local wall clock (no TZ). Browser sends
+    # call_time in UTC. Set to hours east of UTC (e.g. 3 for Moscow). When 0,
+    # Kommo recording matcher tries common offsets automatically.
+    "pbx_utc_offset_hours": 0,
+    # Kommo upload workers — raise when many operators hang up at once (default 10).
+    "kommo_worker_count": 10,
+    # Base job-level retries while waiting for Miko CDR/recording (extended under load).
+    "kommo_max_recording_retries": 6,
+    # When queued+waiting jobs exceed this, extra retries are added automatically.
+    "kommo_queue_high_watermark": 15,
+    # Kommo call job log retention in admin + SQLite (auto-purged by background worker).
+    "kommo_jobs_retention_days": 7,
+    # Poll Miko CDR for unanswered inbound calls and apply Kommo entity rules
+    # even when no softphone submitted process-call.
+    "kommo_cdr_entity_enabled": True,
+    "kommo_cdr_entity_poll_seconds": 30,
+    "kommo_cdr_entity_min_call_age_seconds": 60,
+    "kommo_cdr_entity_lookback_minutes": 180,
     "ssl_certfile": None,
     "ssl_keyfile": None,
     # Public URL the admin panel embeds in ``callspire://provision`` links.
@@ -89,6 +110,18 @@ def _first_existing_dir(candidates: list[str]) -> str | None:
                 return p
         except OSError:
             continue
+    return None
+
+
+def _derive_recording_base_from_cdr(cdr_db_path: str) -> str | None:
+    """Map ``.../storage/usbdisk1/.../cdr.db`` → ``.../storage`` on the host."""
+    cdr_db_path = (cdr_db_path or "").strip()
+    if not cdr_db_path:
+        return None
+    parts = Path(cdr_db_path).parts
+    for i, part in enumerate(parts):
+        if part == "storage":
+            return str(Path(*parts[: i + 1]))
     return None
 
 
@@ -128,16 +161,27 @@ def _autofix_mikopbx_paths(cfg: dict) -> dict:
         cfg["cdr_db_path"] = found_cdr
 
     # --- recording base ---
+    cdr_for_rec = str((cfg.get("cdr_db_path") or found_cdr or "").strip())
+    derived_rec = _derive_recording_base_from_cdr(cdr_for_rec)
     rec_candidates = [
+        derived_rec,
         str((cfg.get("recording_base") or "").strip()),
         _defaults["recording_base"],
         "/var/lib/docker/volumes/mikopbx_storage/_data",
+        "/var/spool/mikopbx/storage",
         "/var/spool/mikopbx",
     ]
     found_rec = _first_existing_dir([c for c in rec_candidates if c])
-    if found_rec and found_rec != cfg.get("recording_base"):
-        print(f"[config] WARNING: recording_base not found, using: {found_rec}")
-        cfg["recording_base"] = found_rec
+    if found_rec:
+        current = str((cfg.get("recording_base") or "").strip())
+        if found_rec != current:
+            if derived_rec and found_rec == derived_rec:
+                print(
+                    f"[config] recording_base aligned with cdr_db_path: {found_rec}"
+                )
+            else:
+                print(f"[config] WARNING: recording_base not found, using: {found_rec}")
+            cfg["recording_base"] = found_rec
 
     return cfg
 
@@ -160,17 +204,37 @@ def load_config() -> dict:
     cfg = _autofix_mikopbx_paths(cfg)
 
     if not cfg["users"]:
-        default_password = secrets.token_urlsafe(16)
         cfg["users"] = [
-            {"username": "admin", "password_hash": _hash_password(default_password)}
+            {
+                "username": "admin",
+                "password_hash": _hash_password("admin"),
+                "must_change_password": True,
+            }
         ]
-        print(f"[config] No users configured. Created default user:")
-        print(f"         username: admin")
-        print(f"         password: {default_password}")
-        print(f"         Save this password! It will not be shown again.")
+        print("[config] No users configured. Created default admin user:")
+        print("         username: admin")
+        print("         password: admin")
+        print("         Change this password on first login via /admin")
         _save_config(cfg)
 
     return cfg
+
+
+def update_admin_password(username: str, new_password_hash: str, *, must_change_password: bool = False) -> bool:
+    """Update an admin user's password in config.yaml. Returns True if user was found."""
+    cfg = load_config()
+    users = cfg.get("users") or []
+    found = False
+    for u in users:
+        if u.get("username") == username:
+            u["password_hash"] = new_password_hash
+            u["must_change_password"] = bool(must_change_password)
+            found = True
+            break
+    if not found:
+        return False
+    _save_config(cfg)
+    return True
 
 
 def _save_config(cfg: dict):

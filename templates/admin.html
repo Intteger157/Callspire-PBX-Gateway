@@ -54,7 +54,13 @@
         .btn-danger:hover{background:#e0303f}
         .success{color:#4caf50;font-size:13px;margin-top:8px}
         .error-msg{color:#ff6b6b;font-size:13px;margin-top:8px}
-        .toolbar{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+        .toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:16px}
+        .toolbar-status{flex:1 1 100%;order:99;font-size:13px;line-height:1.35;min-height:0}
+        .toolbar-status:empty{display:none}
+        .toolbar-status .success,.toolbar-status .error-msg{margin-top:0}
+        .kommo-logs-filters .toolbar-status{flex:1 1 100%;order:99;padding-top:0}
+        .kommo-logs-meta{font-size:12px;color:#8b8fa3;margin:-6px 0 12px;line-height:1.4}
+        .kommo-logs-meta:empty{display:none}
         .search-input{max-width:340px}
         .kommo-actions{margin-top:20px;display:flex;flex-direction:column;gap:10px}
         .kommo-actions-primary,.kommo-actions-secondary{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
@@ -63,6 +69,78 @@
         .kommo-toggle.excluded{color:#ff9f43}
         .kommo-user-select{margin-top:6px;max-width:220px;width:100%;padding:6px 8px;border-radius:6px;border:1px solid #3a3f55;background:#1e2130;color:#e8eaf0;font-size:12px}
         .kommo-user-select:disabled{opacity:.5;cursor:not-allowed}
+        .kommo-user-select optgroup{background:#14161e;color:#8b8fa3;font-size:11px}
+        .kommo-user-select option{background:#1a1d27;color:#e8eaf0}
+
+        /* ---------- page header (eyebrow + title + intro) ---------- */
+        .page-head{margin-bottom:20px}
+        .page-eyebrow{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#6b7080;margin-bottom:6px}
+        .page-head h2{margin-bottom:6px}
+        .page-head .subtitle{margin-bottom:0;max-width:920px;line-height:1.5}
+        .page-head--compact{margin-bottom:8px}
+        .page-head--compact h2{margin-bottom:2px;font-size:18px}
+        .page-head--compact .subtitle{margin-bottom:10px;font-size:12px;line-height:1.35;max-width:none}
+        .page-note{margin-top:12px;padding:10px 13px;background:#14161e;border:1px solid #2a2d37;border-left:3px solid #4f8cff;border-radius:8px;color:#8b8fa3;font-size:12px;line-height:1.55;max-width:920px}
+        .page-note strong{color:#c9ccd6;font-weight:600}
+
+        /* ---------- toolbar legend ---------- */
+        .legend{display:inline-flex;flex-wrap:wrap;gap:14px;align-items:center;margin-left:auto;font-size:12px;color:#8b8fa3}
+        .legend-item{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+        .legend-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+        .legend-dot--active{background:#6ee7a8}
+        .legend-dot--inactive{background:#8b8fa3}
+        .legend-dot--missing{background:#ff8a8a}
+
+        /* ---------- Kommo cell inside PBX Users table ---------- */
+        .kommo-cell{display:flex;flex-direction:column;gap:4px;min-width:0}
+        .kommo-user-warn{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:#ffcc66;line-height:1.3}
+        .kommo-user-warn--err{color:#ff8a8a}
+
+        /* ---------- quick links (section hub) ---------- */
+        .quick-links{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:20px;max-width:920px}
+        .quick-link{display:flex;flex-direction:column;gap:5px;padding:14px 16px;background:#14161e;border:1px solid #2a2d37;border-radius:10px;cursor:pointer;text-align:left;font-family:inherit;transition:border-color .15s,background .15s}
+        .quick-link:hover{border-color:#4f8cff;background:#1a2030}
+        .quick-link .ql-title{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:#e4e6eb}
+        .quick-link .ql-title svg{width:15px;height:15px;flex-shrink:0;opacity:.9}
+        .quick-link .ql-sub{font-size:12px;color:#8b8fa3;line-height:1.45}
+
+        /* ---------- dashboard ---------- */
+        .dash-filters{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;padding:16px 20px;margin-bottom:20px}
+        .dash-filters label{margin:0 0 5px;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#6b7080}
+        .dash-filters select,.dash-filters input[type="datetime-local"]{padding:8px 10px;background:#0f1117;border:1px solid #2a2d37;border-radius:6px;color:#e4e6eb;font-size:13px;outline:none;min-width:140px;font-family:inherit}
+        .dash-filters select:focus,.dash-filters input[type="datetime-local"]:focus{border-color:#4f8cff}
+        .seg{display:inline-flex;gap:2px;padding:3px;background:#14161e;border:1px solid #2a2d37;border-radius:8px}
+        .seg button{padding:6px 12px;background:transparent;border:none;color:#8b8fa3;font-size:12px;font-weight:500;border-radius:6px;cursor:pointer;font-family:inherit}
+        .seg button:hover{color:#e4e6eb}
+        .seg button.active{background:#1e2230;color:#e4e6eb}
+        .dash-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px}
+        .stat-tile{background:#1a1d27;border:1px solid #2a2d37;border-radius:12px;padding:14px 16px}
+        .stat-tile .lbl{font-size:12px;color:#8b8fa3;margin-bottom:6px}
+        .stat-tile .val{font-size:26px;font-weight:600;color:#e4e6eb;line-height:1.1}
+        .stat-tile .sub{font-size:12px;color:#6b7080;margin-top:4px}
+        .dash-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px}
+        .dash-grid .card{margin-bottom:0;padding:18px 20px}
+        .dash-chart-card h3,.dash-grid h3{font-size:14px;font-weight:600;margin-bottom:2px}
+        .chart-sub{font-size:12px;color:#6b7080;margin-bottom:12px}
+        @media (max-width:1100px){.dash-grid{grid-template-columns:1fr}}
+        .hbar-row{display:grid;grid-template-columns:170px 1fr 90px;gap:10px;align-items:center;padding:3px 6px;border-radius:6px;cursor:pointer}
+        .hbar-row:hover{background:#1e2130}
+        .hbar-row.sel{background:#4f8cff1a}
+        .hbar-row .hl{font-size:13px;color:#c9cdd6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .hbar-track{height:16px;display:flex;align-items:center}
+        .hbar-fill{height:16px;background:#4f8cff;border-radius:0 4px 4px 0;min-width:2px}
+        .hbar-row .hv{font-size:12px;color:#e4e6eb;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+        .hbar-row .hv .pct{color:#6b7080}
+        .dcols{display:flex;align-items:flex-end;gap:2px;height:120px;margin-top:8px}
+        .dcol{flex:1;display:flex;flex-direction:column;justify-content:flex-end;height:100%;min-width:0}
+        .dcol .bar{background:#4f8cff;border-radius:4px 4px 0 0;min-height:2px;width:100%;max-width:24px;margin:0 auto}
+        .dcol:hover .bar{background:#6da2ff}
+        .dax{display:flex;gap:2px;margin-top:6px}
+        .dax span{flex:1;text-align:center;font-size:10px;color:#6b7080;overflow:hidden;white-space:nowrap;min-width:0}
+        #dash-table th{cursor:pointer;user-select:none;white-space:nowrap}
+        #dash-table th .arr{font-size:9px;color:#4f8cff;margin-left:4px}
+        #dash-table td{white-space:nowrap}
+        .dash-empty{color:#6b7080;font-size:13px;padding:10px 0}
 
         /* ---------- table ---------- */
         table{width:100%;border-collapse:collapse;margin-top:8px}
@@ -119,7 +197,7 @@
         .tag{display:inline-block;padding:2px 8px;background:#4f8cff22;color:#4f8cff;border-radius:4px;font-size:11px;font-weight:600}
         tr.user-row{cursor:pointer}
         .callerids-cell{color:#c9ccd6;font-size:13px;word-break:break-all}
-        .subtabs{display:inline-flex;gap:2px;padding:3px;background:#14161e;border:1px solid #2a2d37;border-radius:10px;margin-bottom:16px}
+        .subtabs{display:inline-flex;gap:2px;padding:3px;background:#14161e;border:1px solid #2a2d37;border-radius:10px;margin-bottom:10px}
         .subtab-btn{padding:7px 16px;background:transparent;border:none;color:#8b8fa3;font-size:13px;font-weight:500;border-radius:7px;cursor:pointer;transition:background .15s,color .15s;display:inline-flex;align-items:center;gap:8px}
         .subtab-btn:hover{color:#e4e6eb}
         .subtab-btn.active{background:#1e2230;color:#e4e6eb}
@@ -172,6 +250,85 @@
         .conn-status-line{margin-top:12px;padding:10px 12px;background:#14161e;border:1px solid #2a2d37;border-radius:8px;font-size:12px;line-height:1.45}
         .conn-badge-ok{display:inline-block;padding:2px 8px;border-radius:4px;background:#1b3d2d;color:#6ee7a8;font-size:11px;font-weight:700;margin-right:8px;vertical-align:middle}
         .conn-badge-fail{display:inline-block;padding:2px 8px;border-radius:4px;background:#3d1b1b;color:#ff8a8a;font-size:11px;font-weight:700;margin-right:8px;vertical-align:middle}
+        /* ---------- Kommo call log badges ---------- */
+        .kommo-log-badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;white-space:nowrap}
+        .kommo-log-badge--ok{background:#15361f;color:#6ee7a8}
+        .kommo-log-badge--warn{background:#3c2e10;color:#ffcc66}
+        .kommo-log-badge--err{background:#401414;color:#ff8a8a}
+        .kommo-log-badge--muted{background:#1d2030;color:#8b8fa3}
+        .kommo-log-badge--proc{background:#1a2744;color:#7eb6ff}
+        /* ---------- Kommo call logs filters ---------- */
+        .kommo-logs-filters{
+            display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px 14px;
+            padding:16px 18px;background:#14161e;border:1px solid #2a2d37;border-radius:10px;margin-bottom:16px
+        }
+        .kommo-filter-field{display:flex;flex-direction:column;gap:5px;min-width:0}
+        .kommo-filter-field>span{
+            font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#6b7080
+        }
+        .filter-select,.kommo-filter-input{
+            appearance:none;-webkit-appearance:none;
+            min-width:120px;padding:8px 34px 8px 12px;
+            background-color:#0f1117;
+            background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238b8fa3' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+            background-repeat:no-repeat;background-position:right 11px center;
+            border:1px solid #323846;border-radius:8px;color:#e4e6eb;font-size:13px;
+            outline:none;transition:border-color .15s,box-shadow .15s;font-family:inherit;cursor:pointer
+        }
+        .kommo-filter-input{background-image:none;padding-right:12px;cursor:text;min-width:150px}
+        .filter-select:hover,.kommo-filter-input:hover{border-color:#4a5060}
+        .filter-select:focus,.kommo-filter-input:focus{border-color:#4f8cff;box-shadow:0 0 0 2px #4f8cff33}
+        .filter-select option{background:#1a1d27;color:#e4e6eb}
+        .kommo-crm-btn{
+            display:inline-flex;align-items:center;gap:5px;padding:5px 11px;
+            background:#1e2a3e;border:1px solid #3d5a80;border-radius:6px;
+            color:#7eb6ff;font-size:12px;font-weight:600;text-decoration:none;white-space:nowrap;
+            transition:background .15s,border-color .15s,color .15s
+        }
+        .kommo-crm-btn:hover{background:#24324a;border-color:#4f8cff;color:#fff}
+        .kommo-crm-btn svg{width:13px;height:13px;flex-shrink:0;opacity:.9}
+        .kommo-log-actions{
+            display:flex;flex-direction:column;align-items:stretch;gap:6px;min-width:108px;max-width:140px
+        }
+        .kommo-log-actions .btn{width:100%;justify-content:center;white-space:nowrap;box-sizing:border-box}
+        .kommo-rules-table td,.kommo-rules-table th{font-size:12px;vertical-align:middle}
+        .kommo-rules-table .rule-flag{display:inline-block;width:18px;text-align:center;font-weight:700}
+        .kommo-rules-table .rule-flag--yes{color:#6ee7a8}
+        .kommo-rules-table .rule-flag--no{color:#ff8a8a}
+        .kommo-rule-editor{border:1px solid #3a3f55;border-radius:8px;padding:16px;margin-top:16px;background:#1a1d28}
+        .kommo-rule-editor.hidden{display:none}
+        .kommo-rule-editor .row{margin-bottom:12px}
+        .kommo-rule-section{border-top:1px solid #2a2f42;padding-top:12px;margin-top:12px}
+        .ker-tag-picker{display:flex;flex-direction:column;gap:8px}
+        .ker-tag-selected{
+            display:flex;align-items:center;gap:8px;min-height:36px;padding:6px 10px;
+            background:#14161e;border:1px solid #2a2d37;border-radius:6px
+        }
+        .ker-tag-selected-label{flex:1;font-size:13px;color:#c9ccd6;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+        .ker-tag-selected-label.muted{color:#6b7080}
+        .ker-tag-clear{
+            flex-shrink:0;width:28px;height:28px;border:none;border-radius:6px;background:#2a2d37;
+            color:#8b8fa3;font-size:16px;line-height:1;cursor:pointer
+        }
+        .ker-tag-clear:hover{color:#ff8a8a;background:#3a2028}
+        .ker-tag-clear.hidden{display:none}
+        .ker-tag-list{
+            max-height:220px;overflow-y:auto;overflow-x:hidden;border:1px solid #2a2d37;
+            border-radius:8px;background:#0f1117
+        }
+        .ker-tag-item{
+            display:flex;align-items:center;gap:8px;width:100%;padding:8px 12px;border:none;border-bottom:1px solid #252830;
+            background:transparent;color:#e4e6eb;font-size:13px;text-align:left;cursor:pointer;font-family:inherit;line-height:1.35
+        }
+        .ker-tag-item:last-child{border-bottom:none}
+        .ker-tag-item:hover{background:#1e2130}
+        .ker-tag-item.active{background:#4f8cff22;box-shadow:inset 3px 0 0 #4f8cff}
+        .ker-tag-item-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+        .ker-tag-item-badge{
+            flex-shrink:0;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;
+            color:#8b8fa3;background:#252830;padding:2px 6px;border-radius:4px
+        }
+        .ker-tag-empty{padding:14px 12px;font-size:13px;color:#6b7080}
         .conn-detail{color:#8b8fa3}
         .conn-retry{margin-top:8px}
         #login-overlay .login-card-header{display:flex;align-items:center;gap:12px;margin-bottom:4px}
@@ -247,51 +404,91 @@
             </div>
         </div>
         <div class="sidebar-inner">
-            <div class="nav-group open" data-group="pbx">
-                <button type="button" class="nav-group-head" aria-expanded="true" onclick="toggleNavGroup(this)" id="nav-head-pbx">
-                    <span>MikoPBX</span>
+            <div class="nav-group open" data-group="overview">
+                <button type="button" class="nav-group-head" aria-expanded="true" onclick="toggleNavGroup(this)" id="nav-head-overview">
+                    <span>Overview</span>
                     <span class="nav-chevron" aria-hidden="true">▼</span>
                 </button>
-                <div class="nav-group-body" role="group" aria-labelledby="nav-head-pbx">
+                <div class="nav-group-body" role="group" aria-labelledby="nav-head-overview">
+                    <button type="button" class="nav-sub" data-page="dashboard" onclick="navigate('dashboard',this)">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                        Dashboard
+                    </button>
+                </div>
+            </div>
+            <div class="nav-group open" data-group="telephony">
+                <button type="button" class="nav-group-head" aria-expanded="true" onclick="toggleNavGroup(this)" id="nav-head-telephony">
+                    <span>Telephony &middot; MikoPBX</span>
+                    <span class="nav-chevron" aria-hidden="true">▼</span>
+                </button>
+                <div class="nav-group-body" role="group" aria-labelledby="nav-head-telephony">
                     <button type="button" class="nav-sub active" data-page="users" onclick="navigate('users',this)">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                         PBX Users
                     </button>
                     <button type="button" class="nav-sub" data-page="numbers" onclick="navigate('numbers',this)">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.362 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-                        Numbers
+                        Outbound numbers
                     </button>
                     <button type="button" class="nav-sub" data-page="trunks" onclick="navigate('trunks',this)">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
-                        Trunks
+                        Trunks &amp; health
                     </button>
                     <button type="button" class="nav-sub" data-page="settings-ami" onclick="navigate('settings-ami',this)">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M4 12h10M4 17h8"/><circle cx="18" cy="12" r="2"/></svg>
                         AMI &amp; Originate
                     </button>
-                    <button type="button" class="nav-sub" data-page="settings-auth" onclick="navigate('settings-auth',this)">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                        Auth &amp; sessions
-                    </button>
+                </div>
+            </div>
+            <div class="nav-group open" data-group="kommo">
+                <button type="button" class="nav-group-head" aria-expanded="true" onclick="toggleNavGroup(this)" id="nav-head-kommo">
+                    <span>Kommo CRM</span>
+                    <span class="nav-chevron" aria-hidden="true">▼</span>
+                </button>
+                <div class="nav-group-body" role="group" aria-labelledby="nav-head-kommo">
                     <button type="button" class="nav-sub" data-page="settings-kommo" onclick="navigate('settings-kommo',this)">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
-                        Kommo CRM
+                        Connection
+                    </button>
+                    <button type="button" class="nav-sub" data-page="kommo-entity-rules" onclick="navigate('kommo-entity-rules',this)">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18"/><path d="M3 12h18"/><circle cx="12" cy="12" r="9"/></svg>
+                        Entity rules
+                    </button>
+                    <button type="button" class="nav-sub" data-page="kommo-logs" onclick="navigate('kommo-logs',this)">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                        Call logs &amp; uploads
                     </button>
                 </div>
             </div>
-            <div class="nav-group open" data-group="softphone">
-                <button type="button" class="nav-group-head" aria-expanded="true" onclick="toggleNavGroup(this)" id="nav-head-softphone">
-                    <span>Web softphone</span>
+            <div class="nav-group open" data-group="softphones">
+                <button type="button" class="nav-group-head" aria-expanded="true" onclick="toggleNavGroup(this)" id="nav-head-softphones">
+                    <span>Softphones</span>
                     <span class="nav-chevron" aria-hidden="true">▼</span>
                 </button>
-                <div class="nav-group-body" role="group" aria-labelledby="nav-head-softphone">
+                <div class="nav-group-body" role="group" aria-labelledby="nav-head-softphones">
                     <button type="button" class="nav-sub" data-page="softphone-accounts" onclick="navigate('softphone-accounts',this)">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="14" rx="2"/><path d="M8 20h8"/><path d="M12 18v2"/><path d="M7 8h10"/><path d="M7 12h6"/></svg>
-                        Accounts
+                        Web accounts
                     </button>
                     <button type="button" class="nav-sub" data-page="settings-webrtc" onclick="navigate('settings-webrtc',this)">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
                         Browser calling
+                    </button>
+                    <button type="button" class="nav-sub" data-page="settings-softphone-app" onclick="navigate('settings-softphone-app',this)">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>
+                        Desktop app &amp; TURN
+                    </button>
+                </div>
+            </div>
+            <div class="nav-group open" data-group="system">
+                <button type="button" class="nav-group-head" aria-expanded="true" onclick="toggleNavGroup(this)" id="nav-head-system">
+                    <span>System</span>
+                    <span class="nav-chevron" aria-hidden="true">▼</span>
+                </button>
+                <div class="nav-group-body" role="group" aria-labelledby="nav-head-system">
+                    <button type="button" class="nav-sub" data-page="settings-auth" onclick="navigate('settings-auth',this)">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                        Auth &amp; sessions
                     </button>
                 </div>
             </div>
@@ -303,10 +500,110 @@
 
     <div class="main">
 
+        <!-- ==================== DASHBOARD ==================== -->
+        <div id="page-dashboard" class="page">
+            <div class="page-head">
+                <div class="page-eyebrow">Overview</div>
+                <h2>Dashboard</h2>
+                <p class="subtitle">Call analytics from MikoPBX CDR (<code>cdr_general</code>) — who called where, by country and device.</p>
+            </div>
+
+            <div class="card dash-filters">
+                <div>
+                    <label>Period</label>
+                    <div class="seg" id="dash-period-seg">
+                        <button type="button" onclick="dashSetPeriod(1,this)">Today</button>
+                        <button type="button" class="active" onclick="dashSetPeriod(7,this)">7 days</button>
+                        <button type="button" onclick="dashSetPeriod(30,this)">30 days</button>
+                        <button type="button" onclick="dashSetPeriod(0,this)">Custom</button>
+                    </div>
+                </div>
+                <div id="dash-custom-range" class="hidden" style="display:flex;gap:8px;align-items:flex-end">
+                    <div><label>From</label><input type="datetime-local" id="dash-from"></div>
+                    <div><label>To</label><input type="datetime-local" id="dash-to"></div>
+                    <button type="button" class="btn btn-sm" onclick="loadDashboard()">Apply</button>
+                </div>
+                <div><label>User</label><select id="dash-f-ext" onchange="dashApplyFilters()"><option value="">All users</option></select></div>
+                <div><label>Direction</label><select id="dash-f-dir" onchange="dashApplyFilters()">
+                    <option value="">All</option>
+                    <option value="outgoing">Outgoing</option>
+                    <option value="incoming">Incoming</option>
+                    <option value="internal">Internal</option>
+                </select></div>
+                <div><label>Device</label><select id="dash-f-dev" onchange="dashApplyFilters()">
+                    <option value="">All</option>
+                    <option value="web">Web softphone (PC)</option>
+                    <option value="sip">SIP device / mobile</option>
+                    <option value="unknown">Unknown</option>
+                </select></div>
+                <div><label>Country</label><select id="dash-f-country" onchange="dashApplyFilters()"><option value="">All countries</option></select></div>
+                <div style="margin-left:auto;display:flex;gap:8px">
+                    <button type="button" class="btn btn-outline btn-sm" onclick="dashResetFilters()">Reset</button>
+                    <button type="button" class="btn btn-outline btn-sm" onclick="loadDashboard()">&#10227; Refresh</button>
+                    <button type="button" class="btn btn-outline btn-sm" onclick="dashExportCsv()">Export CSV</button>
+                </div>
+            </div>
+
+            <div id="dash-status"></div>
+            <div class="dash-tiles" id="dash-tiles"></div>
+
+            <div class="card dash-chart-card" style="padding:18px 20px">
+                <h3>Calls per day</h3>
+                <div class="chart-sub" id="dash-daily-sub">Total calls in the filtered slice</div>
+                <div id="dash-daily"></div>
+            </div>
+
+            <div class="dash-grid">
+                <div class="card">
+                    <h3>Top users</h3>
+                    <div class="chart-sub">Calls per extension &middot; % answered &mdash; click a bar to filter</div>
+                    <div id="dash-users"></div>
+                </div>
+                <div class="card">
+                    <h3>Countries</h3>
+                    <div class="chart-sub">External calls by destination / origin country &mdash; click to filter</div>
+                    <div id="dash-countries"></div>
+                </div>
+                <div class="card">
+                    <h3>Devices</h3>
+                    <div class="chart-sub">How calls were placed / taken (web softphone registers as ext-WS)</div>
+                    <div id="dash-devices"></div>
+                </div>
+                <div class="card">
+                    <h3>Talk time by user</h3>
+                    <div class="chart-sub">Answered talk time per extension &mdash; click to filter</div>
+                    <div id="dash-talk"></div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3 style="font-size:14px;font-weight:600;margin-bottom:8px">Calls</h3>
+                <div style="overflow-x:auto">
+                    <table id="dash-table">
+                        <thead><tr>
+                            <th onclick="dashSortBy('start')">Time<span class="arr" id="arr-start"></span></th>
+                            <th onclick="dashSortBy('ext')">User<span class="arr" id="arr-ext"></span></th>
+                            <th onclick="dashSortBy('direction')">Direction<span class="arr" id="arr-direction"></span></th>
+                            <th onclick="dashSortBy('phone')">Number<span class="arr" id="arr-phone"></span></th>
+                            <th onclick="dashSortBy('country')">Country<span class="arr" id="arr-country"></span></th>
+                            <th onclick="dashSortBy('device')">Device<span class="arr" id="arr-device"></span></th>
+                            <th onclick="dashSortBy('answered')">Status<span class="arr" id="arr-answered"></span></th>
+                            <th onclick="dashSortBy('billsec')">Talk<span class="arr" id="arr-billsec"></span></th>
+                        </tr></thead>
+                        <tbody id="dash-tbody"></tbody>
+                    </table>
+                </div>
+                <div id="dash-table-foot" class="dash-empty"></div>
+            </div>
+        </div>
+
         <!-- ==================== SETTINGS: AMI (MikoPBX) ==================== -->
         <div id="page-settings-ami" class="page">
-            <h2>AMI &amp; Originate</h2>
-            <p class="subtitle">Server-to-MikoPBX connection for outbound calls initiated by this proxy (web softphone / integrations).</p>
+            <div class="page-head">
+                <div class="page-eyebrow">Telephony &middot; MikoPBX</div>
+                <h2>AMI &amp; Originate</h2>
+                <p class="subtitle">Server-to-MikoPBX connection for outbound calls initiated by this proxy (web softphone / integrations).</p>
+            </div>
             <div class="card" style="max-width:640px">
                 <div class="row">
                     <div><label>Host</label><input type="text" id="ami-host" value="127.0.0.1"></div>
@@ -326,8 +623,11 @@
 
         <!-- ==================== SETTINGS: Auth / JWT sessions ==================== -->
         <div id="page-settings-auth" class="page">
-            <h2>Auth &amp; sessions</h2>
-            <p class="subtitle">How long desktop and web softphone login tokens stay valid. When a token expires, users lose outbound Caller ID list and integrations until they authorize again in the softphone settings.</p>
+            <div class="page-head">
+                <div class="page-eyebrow">System</div>
+                <h2>Auth &amp; sessions</h2>
+                <p class="subtitle">How long desktop and web softphone login tokens stay valid. When a token expires, users lose outbound Caller ID list and integrations until they authorize again in the softphone settings.</p>
+            </div>
             <div class="card" style="max-width:640px">
                 <label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;cursor:pointer">
                     <input type="checkbox" id="jwt-never-expire" onchange="toggleJwtNeverExpire()">
@@ -348,8 +648,36 @@
 
         <!-- ==================== SETTINGS: Kommo CRM ==================== -->
         <div id="page-settings-kommo" class="page">
-            <h2>Kommo CRM</h2>
-            <p class="subtitle">Shared Kommo account for Callspire clients. Authorize once — desktop and web softphones use the same OAuth session.</p>
+            <div class="page-head">
+                <div class="page-eyebrow">Kommo CRM</div>
+                <h2>Connection</h2>
+                <p class="subtitle">Shared Kommo account for Callspire clients. Authorize once — desktop and web softphones use the same OAuth session.</p>
+            </div>
+
+            <div class="quick-links">
+                <button type="button" class="quick-link" onclick="navigateToKommoUsers()">
+                    <span class="ql-title">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                        Extension &rarr; user mapping
+                    </span>
+                    <span class="ql-sub">Assign a Kommo user to each PBX extension on the PBX Users page.</span>
+                </button>
+                <button type="button" class="quick-link" onclick="navigate('kommo-entity-rules', document.querySelector('.nav-sub[data-page=kommo-entity-rules]'))">
+                    <span class="ql-title">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18"/><path d="M3 12h18"/><circle cx="12" cy="12" r="9"/></svg>
+                        Entity rules
+                    </span>
+                    <span class="ql-sub">Auto-create contacts, deals and tasks per call type and DID.</span>
+                </button>
+                <button type="button" class="quick-link" onclick="navigate('kommo-logs', document.querySelector('.nav-sub[data-page=kommo-logs]'))">
+                    <span class="ql-title">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                        Call logs &amp; uploads
+                    </span>
+                    <span class="ql-sub">Check what reached AmoCRM and retry failed uploads.</span>
+                </button>
+            </div>
+
             <div class="card" style="max-width:640px">
                 <label style="display:flex;align-items:center;gap:8px;margin-bottom:16px;cursor:pointer">
                     <input type="checkbox" id="kommo-enabled">
@@ -367,7 +695,7 @@
                 <div class="row">
                     <div>
                         <label>Domain</label>
-                        <input type="text" id="kommo-domain" placeholder="mdkb.amocrm.ru or mdkb.kommo.com">
+                        <input type="text" id="kommo-domain" placeholder="yourcompany or yourcompany.kommo.com">
                         <p id="kommo-account-url-hint" class="subtitle" style="margin:6px 0 0;font-size:12px;color:#6b7080"></p>
                     </div>
                 </div>
@@ -380,17 +708,198 @@
                     <div class="kommo-actions-secondary">
                         <button type="button" class="btn btn-outline btn-sm" onclick="disconnectKommo()">Disconnect</button>
                         <button type="button" class="btn btn-outline btn-sm" onclick="resetKommoRedirectUri()">Reset redirect URI</button>
-                        <button type="button" class="btn btn-outline btn-sm" onclick="navigateToKommoUsers()">Manage users</button>
                     </div>
                 </div>
                 <div id="kommo-status" style="margin-top:12px"></div>
             </div>
         </div>
 
+        <!-- ==================== KOMMO ENTITY RULES ==================== -->
+        <div id="page-kommo-entity-rules" class="page">
+            <div class="page-head">
+                <div class="page-eyebrow">Kommo CRM</div>
+                <h2>Entity rules</h2>
+                <p class="subtitle">Create contacts, deals and tasks by call type — similar to MikoPBX amoCRM integration. Empty DID matches all numbers.</p>
+                <div class="page-note">Rules run <strong>after</strong> a call is matched in Kommo. Who the call is attached to comes from the <strong>Kommo user</strong> assigned to the extension on the PBX Users page.</div>
+            </div>
+            <div class="card">
+                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
+                    <button type="button" class="btn" onclick="newKommoEntityRule()">+ Add rule</button>
+                    <button type="button" class="btn btn-outline" onclick="loadKommoEntityRules()">Refresh</button>
+                    <span id="kommo-entity-rules-status" class="toolbar-status" style="flex:1 1 auto;order:0"></span>
+                </div>
+                <div class="table-wrap">
+                    <table class="kommo-rules-table">
+                        <thead>
+                            <tr>
+                                <th>DID</th>
+                                <th>Call type</th>
+                                <th>Contact</th>
+                                <th>Deal</th>
+                                <th>Tag</th>
+                                <th>Task</th>
+                                <th>On</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="kommo-entity-rules-tbody">
+                            <tr><td colspan="8" class="subtitle">Loading…</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div id="kommo-entity-rule-editor" class="kommo-rule-editor hidden">
+                    <h3 id="kommo-entity-rule-editor-title" style="margin:0 0 12px;font-size:15px">Edit rule</h3>
+                    <input type="hidden" id="ker-id">
+                    <div class="row">
+                        <div><label>DID (empty = all)</label><input type="text" id="ker-did" placeholder="+74951234567"></div>
+                        <div><label>Call type</label><select id="ker-call-type" class="filter-select" style="width:100%"></select></div>
+                    </div>
+                    <div class="row">
+                        <div><label>Action with contacts and deals</label><select id="ker-entity-action" class="filter-select" style="width:100%" onchange="syncKommoEntityRuleFields()"></select></div>
+                        <div><label>Default responsible (optional)</label><select id="ker-default-user" class="filter-select" style="width:100%"><option value="">—</option></select></div>
+                    </div>
+                    <div id="ker-deal-fields" class="kommo-rule-section">
+                        <div class="row">
+                            <div><label>Pipeline</label><select id="ker-pipeline" class="filter-select" style="width:100%" onchange="syncKommoEntityRuleStages()"><option value="">—</option></select></div>
+                            <div><label>Stage</label><select id="ker-status" class="filter-select" style="width:100%"><option value="">—</option></select></div>
+                        </div>
+                        <div class="row">
+                            <div><label>Contact name template</label><input type="text" id="ker-contact-template" placeholder="New contact &lt;PhoneNumber&gt;"></div>
+                            <div><label>Deal name template</label><input type="text" id="ker-lead-template" placeholder="New deal &lt;PhoneNumber&gt;"></div>
+                        </div>
+                        <div class="row">
+                            <div style="flex:1" class="ker-tag-picker">
+                                <label>Deal tag (optional) <span id="ker-lead-tag-count" class="subtitle" style="font-size:11px"></span></label>
+                                <div id="ker-lead-tag-selected" class="ker-tag-selected">
+                                    <span class="ker-tag-selected-label muted">No tag selected</span>
+                                    <button type="button" class="ker-tag-clear hidden" title="Clear tag" onclick="clearKerLeadTagSelection()">×</button>
+                                </div>
+                                <input type="text" id="ker-lead-tag-search" class="filter-select" style="width:100%" placeholder="Search tag (tilda, beeline, CC…)" oninput="scheduleKommoEntityRuleTagFilter()" autocomplete="off">
+                                <div id="ker-lead-tag-list" class="ker-tag-list"><div class="ker-tag-empty">Type 2+ characters to search</div></div>
+                                <p id="ker-lead-tag-hint" class="subtitle" style="margin:0;font-size:11px">Type at least 2 characters to search Kommo tags.</p>
+                                <input type="hidden" id="ker-lead-tag-value">
+                                <input type="hidden" id="ker-lead-tag-source">
+                                <input type="hidden" id="ker-lead-tag-name">
+                            </div>
+                            <div></div>
+                        </div>
+                    </div>
+                    <div class="kommo-rule-section">
+                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:12px">
+                            <input type="checkbox" id="ker-create-task" onchange="syncKommoEntityRuleFields()">
+                            Create task
+                        </label>
+                        <div id="ker-task-fields">
+                            <div class="row">
+                                <div><label>Task name template</label><input type="text" id="ker-task-template" placeholder="Call back &lt;PhoneNumber&gt;"></div>
+                                <div><label>Task responsible</label><select id="ker-task-responsible" class="filter-select" style="width:100%" onchange="syncKommoEntityRuleFields()"></select></div>
+                            </div>
+                            <div class="row">
+                                <div><label>Specific task user</label><select id="ker-task-user" class="filter-select" style="width:100%"><option value="">—</option></select></div>
+                                <div><label>Deadline (hours)</label><input type="number" id="ker-task-deadline" min="0" value="1"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:12px">
+                        <input type="checkbox" id="ker-enabled" checked>
+                        Rule enabled
+                    </label>
+                    <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;align-items:center">
+                        <button type="button" class="btn" onclick="saveKommoEntityRule()">Save</button>
+                        <button type="button" class="btn btn-outline" onclick="cancelKommoEntityRuleEdit()">Cancel</button>
+                        <span id="kommo-entity-rule-status" class="toolbar-status" style="flex:1 1 auto;order:0"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== KOMMO CALL LOGS ==================== -->
+        <div id="page-kommo-logs" class="page">
+            <div class="page-head">
+                <div class="page-eyebrow">Kommo CRM</div>
+                <h2>Call logs &amp; uploads</h2>
+                <p class="subtitle">Inbound calls from PBX CDR (missed/answered, callback tasks) and softphone upload jobs to AmoCRM.</p>
+            </div>
+            <div class="kommo-logs-filters">
+                <div class="kommo-filter-field">
+                    <span>View</span>
+                    <select id="kommo-logs-view" class="filter-select" onchange="loadKommoLogs()">
+                        <option value="inbound" selected>Inbound (PBX)</option>
+                        <option value="upload">Upload jobs</option>
+                    </select>
+                </div>
+                <div class="kommo-filter-field">
+                    <span>Period</span>
+                    <select id="kommo-logs-hours" class="filter-select" onchange="loadKommoLogs()">
+                        <option value="24">24 h</option>
+                        <option value="72" selected>72 h</option>
+                        <option value="168">7 d</option>
+                    </select>
+                </div>
+                <div class="kommo-filter-field">
+                    <span>Extension</span>
+                    <select id="kommo-logs-ext" class="filter-select" onchange="loadKommoLogs()">
+                        <option value="">All</option>
+                    </select>
+                </div>
+                <div class="kommo-filter-field" id="kommo-logs-call-status-wrap">
+                    <span>Call</span>
+                    <select id="kommo-logs-call-status" class="filter-select" onchange="loadKommoLogs()">
+                        <option value="">All</option>
+                        <option value="missed">Missed</option>
+                        <option value="answered">Answered</option>
+                    </select>
+                </div>
+                <div class="kommo-filter-field hidden" id="kommo-logs-upload-status-wrap">
+                    <span>Upload</span>
+                    <select id="kommo-logs-status-filter" class="filter-select" onchange="loadKommoLogs()">
+                        <option value="">All</option>
+                        <option value="uploaded">uploaded</option>
+                        <option value="failed">failed</option>
+                        <option value="queued">queued</option>
+                        <option value="processing">processing</option>
+                        <option value="waiting_recording">waiting</option>
+                        <option value="skipped">skipped</option>
+                    </select>
+                </div>
+                <div class="kommo-filter-field">
+                    <span>Phone</span>
+                    <input type="text" id="kommo-logs-phone" class="kommo-filter-input" placeholder="Search number…" autocomplete="off"
+                        onkeydown="if(event.key==='Enter'){event.preventDefault();loadKommoLogs();}">
+                </div>
+                <button type="button" class="btn btn-outline btn-sm" onclick="loadKommoLogs()" style="margin-bottom:1px">Refresh</button>
+                <span id="kommo-logs-status" class="toolbar-status"></span>
+            </div>
+            <div id="kommo-logs-footer" class="kommo-logs-meta"></div>
+            <div class="card" style="padding:0;overflow:auto">
+                <table id="kommo-logs-table">
+                    <thead>
+                        <tr id="kommo-logs-thead-row">
+                            <th>Call time</th>
+                            <th>Extension</th>
+                            <th>Phone</th>
+                            <th>Status</th>
+                            <th>Dur</th>
+                            <th>Task</th>
+                            <th>CRM</th>
+                            <th>Upload</th>
+                            <th style="min-width:120px">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="kommo-logs-tbody">
+                        <tr><td colspan="9" style="color:#555;padding:20px">Open this page to load logs.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
         <!-- ==================== SETTINGS: WebRTC (browser softphone) ==================== -->
         <div id="page-settings-webrtc" class="page">
-            <h2>Browser calling</h2>
-            <p class="subtitle">WebRTC / SIP over WSS — same values as in MikoPBX Web Phone settings. Users enter the extension SIP password in the browser; nothing secret is stored here.</p>
+            <div class="page-head">
+                <div class="page-eyebrow">Softphones</div>
+                <h2>Browser calling</h2>
+                <p class="subtitle">WebRTC / SIP over WSS — same values as in MikoPBX Web Phone settings. TURN/ICE for the browser softphone is taken from <strong>Desktop app &amp; TURN</strong> (same as the Windows client).</p>
+            </div>
             <div class="card" style="max-width:640px">
                 <div class="row">
                     <div><label>WebSocket SIP URL (WSS)</label><input type="text" id="webrtc-ws-url" placeholder="wss://your-pbx:8089/ws"></div>
@@ -406,11 +915,34 @@
             </div>
         </div>
 
+        <!-- ==================== SETTINGS: Softphone app (Windows desktop TURN) ==================== -->
+        <div id="page-settings-softphone-app" class="page">
+            <div class="page-head">
+                <div class="page-eyebrow">Softphones</div>
+                <h2>Desktop app &amp; TURN</h2>
+                <p class="subtitle">Default TURN server for Callspire Windows desktop. Clients with PBX Gateway enabled pull these settings on startup (no push). Browser softphone uses the same TURN for ICE when set here.</p>
+            </div>
+            <div class="card" style="max-width:640px">
+                <div class="row">
+                    <div><label>TURN URI</label><input type="text" id="softphone-turn-uri" placeholder="turn:pbx.example.com:3478?transport=udp"></div>
+                </div>
+                <div class="row">
+                    <div><label>TURN username</label><input type="text" id="softphone-turn-username" placeholder="Optional"></div>
+                    <div><label>TURN password</label><input type="password" id="softphone-turn-password" placeholder="Leave blank to keep current"></div>
+                </div>
+                <p id="softphone-turn-revision" class="subtitle" style="margin-top:12px;font-size:12px"></p>
+                <br>
+                <button type="button" class="btn" onclick="saveSoftphoneAppSettings()">Apply</button>
+                <div id="softphone-app-status"></div>
+            </div>
+        </div>
+
         <!-- ==================== USERS PAGE ==================== -->
         <div id="page-users" class="page active">
-            <h2>PBX Users</h2>
-            <p class="subtitle">MikoPBX extensions from the web UI. <span style="color:#6b7080">Users</span> can be assigned outbound CallerIDs &mdash; <span style="color:#6b7080">System Extensions</span> (queues, IVRs, conferences, dialplan apps, mobile numbers) are read-only.</p>
-            <p id="users-kommo-hint" class="subtitle" style="font-size:12px;margin-top:-8px;margin-bottom:12px;display:none">Gateway Kommo: assign each extension to a <strong>Kommo user</strong> so calls attach from their account. Uncheck <strong>Use shared</strong> to exclude an extension (local Kommo in desktop app).</p>
+            <div class="page-head page-head--compact">
+                <h2>PBX Users</h2>
+                <p class="subtitle">MikoPBX extensions &mdash; double-click a row to edit CallerIDs. System extensions are on the second tab.</p>
+            </div>
 
             <div class="subtabs" role="tablist">
                 <button type="button" class="subtab-btn active" data-subtab="users" onclick="selectUsersSubtab('users')" role="tab">
@@ -426,6 +958,10 @@
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
                     Refresh from MikoPBX
                 </button>
+                <button type="button" class="btn btn-outline" id="users-kommo-sync-btn" style="display:none" onclick="syncKommoUsers()" title="Fetch current Kommo users from AmoCRM. Extension assignments are kept; only names and active/inactive status are updated.">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                    Sync Kommo users
+                </button>
                 <input
                     type="text"
                     id="users-search"
@@ -433,13 +969,26 @@
                     placeholder="Search by name or extension"
                     autocomplete="off"
                     oninput="onUsersSearchInput(this.value)">
+                <span class="legend" id="users-kommo-legend" style="display:none">
+                    <span class="legend-item"><span class="legend-dot legend-dot--active"></span>Active in Kommo</span>
+                    <span class="legend-item"><span class="legend-dot legend-dot--inactive"></span>Deactivated</span>
+                    <span class="legend-item"><span class="legend-dot legend-dot--missing"></span>Not in Kommo</span>
+                </span>
+                <span id="users-status" class="toolbar-status"></span>
             </div>
 
             <!-- Users sub-page: editable CallerID permissions -->
             <div id="subpage-users" class="subpage">
                 <div class="card" style="padding:0;overflow:hidden">
                     <table>
-                        <thead><tr><th>Extension</th><th>Name</th><th>Assigned CallerIDs</th><th style="width:130px">Gateway Kommo</th><th style="width:240px">Kommo user</th><th style="width:140px">Setup</th></tr></thead>
+                        <thead><tr>
+                            <th>Extension</th>
+                            <th>Name</th>
+                            <th title="Outbound CallerIDs this extension may pick in the softphone. Double-click a row to edit.">Assigned CallerIDs</th>
+                            <th style="width:130px" title="On: calls are sent to Kommo by this gateway. Off: the desktop app uses its own local Kommo integration.">Shared Kommo</th>
+                            <th style="width:240px" title="Kommo account the call is attached to. Empty = the account that authorized OAuth.">Kommo user</th>
+                            <th style="width:140px" title="One-time setup link for the Callspire desktop softphone.">Setup</th>
+                        </tr></thead>
                         <tbody id="users-tbody"><tr><td colspan="6" style="color:#555;padding:20px">Loading...</td></tr></tbody>
                     </table>
                 </div>
@@ -455,16 +1004,19 @@
                 </div>
             </div>
 
-            <div id="users-status"></div>
         </div>
 
         <!-- ==================== SOFTPHONE ACCOUNTS PAGE ==================== -->
         <div id="page-softphone-accounts" class="page">
-            <h2>Softphone accounts</h2>
-            <p class="subtitle">Email accounts for <code>/softphone</code> mapped to a MikoPBX extension.</p>
+            <div class="page-head">
+                <div class="page-eyebrow">Softphones</div>
+                <h2>Web accounts</h2>
+                <p class="subtitle">Email accounts for <code>/softphone</code> mapped to a MikoPBX extension.</p>
+            </div>
 
             <div class="toolbar" style="margin-bottom:14px">
                 <button type="button" class="btn" onclick="void openCreateSoftphoneUserModal()">Create user</button>
+                <span id="sfacc-status" class="toolbar-status" style="flex:1 1 auto;order:0"></span>
             </div>
 
             <div class="card" style="padding:0;overflow:hidden">
@@ -482,13 +1034,15 @@
                     </tbody>
                 </table>
             </div>
-            <div id="sfacc-status"></div>
         </div>
 
         <!-- ==================== NUMBERS PAGE ==================== -->
         <div id="page-numbers" class="page">
-            <h2>Numbers</h2>
-            <p class="subtitle">Trunk CallerID numbers from MikoPBX &mdash; add labels visible in the softphone</p>
+            <div class="page-head">
+                <div class="page-eyebrow">Telephony &middot; MikoPBX</div>
+                <h2>Outbound numbers</h2>
+                <p class="subtitle">Trunk CallerID numbers from MikoPBX &mdash; add labels visible in the softphone. Assign these numbers to people on the <strong>PBX Users</strong> page.</p>
+            </div>
             <div class="toolbar">
                 <button type="button" class="btn btn-outline" onclick="refreshNumbers()">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
@@ -502,17 +1056,20 @@
                     placeholder="Search by number or name"
                     autocomplete="off"
                     oninput="onNumbersSearchInput(this.value)">
+                <span id="numbers-status" class="toolbar-status"></span>
             </div>
             <div id="numbers-list">
                 <p style="color:#555">Loading...</p>
             </div>
-            <div id="numbers-status"></div>
         </div>
 
         <!-- ==================== TRUNKS PAGE (manual DIDs per SIP trunk) ==================== -->
         <div id="page-trunks" class="page">
-            <h2>Trunks</h2>
-            <p class="subtitle">SIP trunks from MikoPBX. <span style="color:#6b7080">Double-click a trunk</span> to add or remove extra outbound CallerIDs for originate (stored in this proxy).</p>
+            <div class="page-head">
+                <div class="page-eyebrow">Telephony &middot; MikoPBX</div>
+                <h2>Trunks &amp; health</h2>
+                <p class="subtitle">SIP trunks from MikoPBX. <span style="color:#6b7080">Double-click a trunk</span> to add or remove extra outbound CallerIDs for originate (stored in this proxy).</p>
+            </div>
             <div class="toolbar">
                 <button class="btn btn-outline" onclick="refreshTrunks()">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
@@ -523,10 +1080,10 @@
                     Force status check
                 </button>
                 <input type="text" id="trunks-search" class="search-input" placeholder="Search trunks…" autocomplete="off" oninput="onTrunksSearchInput(this.value)">
+                <span id="trunks-status" class="toolbar-status"></span>
             </div>
             <div id="trunk-health-summary" class="health-summary hidden"></div>
             <div id="trunks-list"><p style="color:#555">Loading…</p></div>
-            <div id="trunks-status"></div>
         </div>
 
     </div><!-- .main -->
@@ -558,6 +1115,8 @@
         <p style="color:#8b8fa3;font-size:13px;margin-bottom:14px;line-height:1.45" id="provision-sub">
             Send this one-time URL to the user. Opening it on a machine with the Callspire desktop app
             installed auto-configures the softphone with their SIP credentials — no password typing.
+            If Gateway Kommo is enabled and a Kommo user is mapped for this extension, AmoCRM integration
+            is turned on automatically (shared company OAuth on the gateway).
         </p>
         <label style="margin-top:0">Callspire URL</label>
         <div style="display:flex;gap:8px;align-items:stretch">
@@ -593,6 +1152,20 @@
     </div>
 </div>
 
+<!-- ========== Kommo re-upload (pick lead) ========== -->
+<div id="kommo-reupload-modal" class="modal-overlay hidden" onclick="if(event.target===this) closeKommoReuploadModal()">
+    <div class="modal" style="width:520px;max-height:85vh;display:flex;flex-direction:column" onclick="event.stopPropagation()">
+        <h3>Upload to Kommo</h3>
+        <p style="color:#8b8fa3;font-size:13px;margin-bottom:12px;line-height:1.45" id="kommo-reupload-sub"></p>
+        <div id="kommo-reupload-leads" style="overflow-y:auto;flex:1;min-height:120px"></div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
+            <button type="button" class="btn btn-outline" onclick="closeKommoReuploadModal()">Cancel</button>
+            <button type="button" class="btn" id="kommo-reupload-submit" onclick="submitKommoReupload()">Upload</button>
+        </div>
+        <div id="kommo-reupload-status"></div>
+    </div>
+</div>
+
 <!-- ========== Create softphone user ========== -->
 <div id="sfacc-create-modal" class="modal-overlay hidden" onclick="if(event.target===this) closeCreateSoftphoneUserModal()">
     <div class="modal modal--sfacc" style="width:440px" onclick="event.stopPropagation()">
@@ -601,7 +1174,7 @@
         <div class="row" style="flex-wrap:wrap;margin-bottom:12px">
             <div style="flex:1;min-width:180px">
                 <label for="sfacc-email">Email</label>
-                <input type="text" id="sfacc-email" placeholder="user@company.com" autocomplete="off">
+                <input type="text" id="sfacc-email" placeholder="user@example.com" autocomplete="off">
             </div>
             <div style="flex:1;min-width:180px">
                 <label for="sfacc-pass">Temporary password</label>
@@ -682,6 +1255,9 @@ let softphoneAccounts = [];
 let sipPeerStatus = {};
 let sipPeerStatusTs = 0;
 let trunkHealthTimer = null;
+let kommoLogsTimer = null;
+let kommoLogsRetrying = {};
+let kommoAccountUrl = '';
 
 // ==================== API helper ====================
 async function api(method, path, body) {
@@ -773,10 +1349,18 @@ function navigate(page, btn, opts) {
     } else if (page === 'settings-webrtc') {
         loadWebrtcConfig();
         loadConnectionStatus('webrtc');
+    } else if (page === 'settings-softphone-app') {
+        loadSoftphoneAppSettings();
     } else if (page === 'settings-auth') {
         loadJwtConfig();
     } else if (page === 'settings-kommo') {
         loadKommoConfig();
+    } else if (page === 'kommo-logs') {
+        loadKommoLogsPage();
+    } else if (page === 'kommo-entity-rules') {
+        loadKommoEntityRulesPage();
+    } else if (page === 'dashboard') {
+        loadDashboard();
     }
     // Trunks page needs a live SIP peer status feed; stop it elsewhere so we
     // don't hit MikoPBX from background tabs the admin isn't looking at.
@@ -785,6 +1369,11 @@ function navigate(page, btn, opts) {
         startTrunkHealthPolling();
     } else {
         stopTrunkHealthPolling();
+    }
+    if (page === 'kommo-logs') {
+        startKommoLogsPolling();
+    } else {
+        stopKommoLogsPolling();
     }
     if (!opts.skipHash) syncHash(page);
 }
@@ -795,7 +1384,7 @@ function applyHashRoute() {
         raw = 'settings-ami';
         try { if (history.replaceState) history.replaceState(null, '', '#settings-ami'); } catch (_) { /* ignore */ }
     }
-    const allowed = ['users', 'numbers', 'trunks', 'softphone-accounts', 'settings-ami', 'settings-auth', 'settings-kommo', 'settings-webrtc'];
+    const allowed = ['dashboard', 'users', 'numbers', 'trunks', 'softphone-accounts', 'settings-ami', 'settings-auth', 'settings-kommo', 'settings-webrtc', 'settings-softphone-app', 'kommo-logs', 'kommo-entity-rules'];
     const page = allowed.includes(raw) ? raw : 'users';
     const cur = document.querySelector('.page.active');
     if (cur && cur.id === 'page-' + page) return;
@@ -900,6 +1489,40 @@ async function saveWebrtcConfig() {
     } catch(e) { el.innerHTML = '<span class="error-msg">'+e.message+'</span>'; }
 }
 
+async function loadSoftphoneAppSettings() {
+    try {
+        const c = await api('GET','/api/admin/softphone-app-settings');
+        document.getElementById('softphone-turn-uri').value = c.turn_uri || '';
+        document.getElementById('softphone-turn-username').value = c.turn_username || '';
+        document.getElementById('softphone-turn-password').value = c.turn_password || '';
+        const revEl = document.getElementById('softphone-turn-revision');
+        if (revEl) {
+            revEl.textContent = c.config_revision
+                ? ('Revision: ' + c.config_revision)
+                : 'Not configured yet';
+        }
+    } catch(e) { console.error(e); }
+}
+async function saveSoftphoneAppSettings() {
+    const el = document.getElementById('softphone-app-status');
+    try {
+        const body = {
+            turn_uri: document.getElementById('softphone-turn-uri').value.trim(),
+            turn_username: document.getElementById('softphone-turn-username').value.trim(),
+        };
+        const pwd = document.getElementById('softphone-turn-password').value;
+        if (pwd) body.turn_password = pwd;
+        const r = await api('POST','/api/admin/softphone-app-settings', body);
+        el.innerHTML = '<span class="success">Applied!</span>';
+        if (r.config_revision) {
+            const revEl = document.getElementById('softphone-turn-revision');
+            if (revEl) revEl.textContent = 'Revision: ' + r.config_revision;
+        }
+        loadSoftphoneAppSettings();
+        setTimeout(() => el.innerHTML = '', 3000);
+    } catch(e) { el.innerHTML = '<span class="error-msg">'+e.message+'</span>'; }
+}
+
 function toggleJwtNeverExpire() {
     const never = document.getElementById('jwt-never-expire').checked;
     document.getElementById('jwt-days-row').style.opacity = never ? '0.45' : '1';
@@ -966,19 +1589,87 @@ let kommoExcludeExtensions = new Set();
 let kommoIntegrationEnabled = false;
 let kommoExtensionUsers = {};
 let kommoUsersList = [];
+let kommoUsersOrphanCount = 0;
+
+/** Plain display name — used where availability is already shown by grouping. */
+function kommoUserName(u) {
+    return (u.name || u.email || ('User ' + u.id)).trim();
+}
+
+/** Name with an availability suffix — used in flat dropdowns without optgroups. */
+function kommoUserOptionLabel(u) {
+    const base = kommoUserName(u);
+    if (u.missing_in_kommo) return base + ' (not in Kommo)';
+    if (u.is_active === false) return base + ' (inactive)';
+    return base;
+}
+
+function applyKommoUsersPayload(r) {
+    kommoUsersList = r.users || [];
+    kommoUsersOrphanCount = r.orphan_count || 0;
+}
 
 async function loadKommoUsersList() {
     if (!kommoIntegrationEnabled) {
         kommoUsersList = [];
+        kommoUsersOrphanCount = 0;
         return;
     }
     try {
         const r = await api('GET', '/api/admin/kommo-users');
-        kommoUsersList = r.users || [];
+        applyKommoUsersPayload(r);
     } catch (e) {
         kommoUsersList = [];
+        kommoUsersOrphanCount = 0;
         console.warn('Kommo users list:', e.message || e);
     }
+}
+
+async function syncKommoUsers() {
+    const el = document.getElementById('users-status');
+    const btn = document.getElementById('users-kommo-sync-btn');
+    if (!kommoIntegrationEnabled) return;
+    if (el) el.innerHTML = '<span style="color:#8b8fa3">Syncing Kommo users...</span>';
+    if (btn) btn.disabled = true;
+    try {
+        const r = await api('POST', '/api/admin/kommo-users/sync');
+        applyKommoUsersPayload(r);
+        try {
+            const kommoR = await api('GET', '/api/admin/kommo-config');
+            kommoExtensionUsers = kommoR.extension_users || {};
+        } catch (_) {}
+        renderUsersTable();
+        let msg = '<span class="success">Kommo users synced: ' + escHtml(String(r.active_count != null ? r.active_count : kommoUsersList.length)) + ' active';
+        if (r.total_count != null && r.total_count !== r.active_count) {
+            msg += ' (' + escHtml(String(r.total_count)) + ' total in account';
+            if (r.inactive_count > 0) msg += ', ' + escHtml(String(r.inactive_count)) + ' inactive';
+            msg += ')';
+        }
+        if (r.orphan_count > 0) {
+            msg += ', <span style="color:#e09090">' + escHtml(String(r.orphan_count)) + ' assigned but missing in Kommo</span>';
+        }
+        if (r.names_updated > 0) msg += ', ' + escHtml(String(r.names_updated)) + ' name(s) updated';
+        msg += '.</span>';
+        if (el) el.innerHTML = msg;
+    } catch (e) {
+        if (el) el.innerHTML = '<span class="error-msg">' + escHtml(e.message || e) + '</span>';
+    } finally {
+        if (btn) btn.disabled = false;
+        setTimeout(function() { if (el && !kommoUsersOrphanCount) el.innerHTML = ''; }, 6000);
+    }
+}
+
+/** Warning shown under the select when the assigned Kommo user is no longer usable. */
+function kommoUserWarnHtml(selectedId) {
+    if (!selectedId || !kommoUsersList.length) return '';
+    const u = kommoUsersList.find(function(x) { return String(x.id) === String(selectedId); });
+    if (!u || u.missing_in_kommo) {
+        return '<span class="kommo-user-warn kommo-user-warn--err">&#9888; Not in Kommo — reassign</span>';
+    }
+    if (u.is_active === false) {
+        return '<span class="kommo-user-warn">&#9888; Deactivated in Kommo</span>';
+    }
+    return '';
 }
 
 function kommoUserSelectHtml(ext, excluded) {
@@ -987,13 +1678,38 @@ function kommoUserSelectHtml(ext, excluded) {
     }
     const mapped = kommoExtensionUsers[String(ext)] || {};
     const selected = mapped.kommo_user_id != null ? String(mapped.kommo_user_id) : '';
-    let opts = '<option value="">— OAuth owner —</option>';
+
+    const groups = [
+        { label: 'Active in Kommo', items: [] },
+        { label: 'Deactivated in Kommo', items: [] },
+        { label: 'Not in Kommo anymore', items: [] },
+    ];
+    let selectedIsKnown = false;
     for (const u of kommoUsersList) {
-        const id = String(u.id);
-        const label = (u.name || u.email || ('User ' + id)).trim();
-        opts += '<option value="' + escAttr(id) + '"' + (id === selected ? ' selected' : '') + '>' + escHtml(label) + '</option>';
+        if (String(u.id) === selected) selectedIsKnown = true;
+        if (u.missing_in_kommo) groups[2].items.push(u);
+        else if (u.is_active === false) groups[1].items.push(u);
+        else groups[0].items.push(u);
     }
-    return '<select class="kommo-user-select" onclick="event.stopPropagation()" onchange="setKommoExtensionUser(\'' + escAttr(ext) + '\', this.value)">' + opts + '</select>';
+
+    let opts = '<option value="">— OAuth owner —</option>';
+    // Keep a stored assignment visible even if the Kommo user list failed to load.
+    if (selected && !selectedIsKnown) {
+        const storedName = (mapped.kommo_user_name || '').trim() || ('User ' + selected);
+        opts += '<optgroup label="Assigned"><option value="' + escAttr(selected) + '" selected>' + escHtml(storedName) + '</option></optgroup>';
+    }
+    for (const g of groups) {
+        if (!g.items.length) continue;
+        opts += '<optgroup label="' + escAttr(g.label) + '">';
+        for (const u of g.items) {
+            const id = String(u.id);
+            opts += '<option value="' + escAttr(id) + '"' + (id === selected ? ' selected' : '') + '>' + escHtml(kommoUserName(u)) + '</option>';
+        }
+        opts += '</optgroup>';
+    }
+
+    const select = '<select class="kommo-user-select" onclick="event.stopPropagation()" onchange="setKommoExtensionUser(\'' + escAttr(ext) + '\', this.value)">' + opts + '</select>';
+    return '<div class="kommo-cell">' + select + kommoUserWarnHtml(selected) + '</div>';
 }
 
 async function setKommoExtensionUser(ext, userId) {
@@ -1013,6 +1729,8 @@ async function setKommoExtensionUser(ext, userId) {
         } else {
             delete kommoExtensionUsers[id];
         }
+        // Re-render so the "deactivated / not in Kommo" hint under the select stays accurate.
+        renderUsersTable();
     } catch (e) {
         renderUsersTable();
         const el = document.getElementById('users-status');
@@ -1023,13 +1741,15 @@ async function setKommoExtensionUser(ext, userId) {
 function navigateToKommoUsers() {
     const btn = document.querySelector('.nav-sub[data-page="users"]');
     navigate('users', btn);
-    const hint = document.getElementById('users-kommo-hint');
-    if (hint) hint.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    const el = document.getElementById('users-kommo-sync-btn') || document.getElementById('users-tbody');
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function updateUsersKommoHint() {
-    const hint = document.getElementById('users-kommo-hint');
-    if (hint) hint.style.display = kommoIntegrationEnabled ? '' : 'none';
+    const syncBtn = document.getElementById('users-kommo-sync-btn');
+    const legend = document.getElementById('users-kommo-legend');
+    if (syncBtn) syncBtn.style.display = kommoIntegrationEnabled ? '' : 'none';
+    if (legend) legend.style.display = kommoIntegrationEnabled ? '' : 'none';
 }
 
 async function toggleUserKommoGateway(ext, useGateway) {
@@ -1067,7 +1787,7 @@ async function loadKommoConfig() {
             if (c.account_base_url) {
                 urlHint.textContent = 'API host: ' + c.account_base_url + (c.authorized ? ' (from OAuth)' : '');
             } else {
-                urlHint.textContent = 'Full Kommo host or short name (mdkb → mdkb.amocrm.ru). Filled automatically after Authorize.';
+                urlHint.textContent = 'Short subdomain or full Kommo host (e.g. yourcompany → yourcompany.amocrm.ru). Filled automatically after Authorize.';
             }
         }
         kommoIntegrationEnabled = !!c.enabled;
@@ -1187,6 +1907,466 @@ async function testKommoConnection() {
                 + formatKommoJwtDetails(t);
         }
     } catch(e) { el.innerHTML = '<span class="error-msg">'+e.message+'</span>'; }
+}
+
+let kommoEntityRulesMeta = null;
+let kommoEntityRulesPipelines = [];
+let kommoEntityRulesTagsAll = [];
+let kommoEntityRulesList = [];
+let kommoEntityRuleTagFilterTimer = null;
+let kerLeadTagSelection = null;
+const KER_TAG_LIST_MAX = 60;
+
+function truncateKerTagLabel(name, maxLen) {
+    const s = (name || '').trim();
+    const max = maxLen || 72;
+    if (s.length <= max) return s;
+    return s.substring(0, max - 1) + '…';
+}
+
+function setKerLeadTagSelection(value, source, name) {
+    if (!value) {
+        kerLeadTagSelection = null;
+    } else {
+        kerLeadTagSelection = {
+            value: String(value),
+            source: source || 'leads',
+            name: (name || '').trim(),
+        };
+    }
+    const valEl = document.getElementById('ker-lead-tag-value');
+    const srcEl = document.getElementById('ker-lead-tag-source');
+    const nameEl = document.getElementById('ker-lead-tag-name');
+    if (valEl) valEl.value = kerLeadTagSelection ? kerLeadTagSelection.value : '';
+    if (srcEl) srcEl.value = kerLeadTagSelection ? kerLeadTagSelection.source : '';
+    if (nameEl) nameEl.value = kerLeadTagSelection ? kerLeadTagSelection.name : '';
+    const selWrap = document.getElementById('ker-lead-tag-selected');
+    const labelEl = selWrap && selWrap.querySelector('.ker-tag-selected-label');
+    const clearBtn = selWrap && selWrap.querySelector('.ker-tag-clear');
+    if (labelEl) {
+        if (!kerLeadTagSelection) {
+            labelEl.textContent = 'No tag selected';
+            labelEl.title = '';
+            labelEl.classList.add('muted');
+        } else {
+            const suffix = kerLeadTagSelection.source === 'contacts' ? ' (contact tag)' : '';
+            labelEl.textContent = truncateKerTagLabel(kerLeadTagSelection.name, 80) + suffix;
+            labelEl.title = kerLeadTagSelection.name + suffix;
+            labelEl.classList.remove('muted');
+        }
+    }
+    if (clearBtn) clearBtn.classList.toggle('hidden', !kerLeadTagSelection);
+    renderKerLeadTagListHighlight();
+}
+
+function clearKerLeadTagSelection() {
+    setKerLeadTagSelection('', '', '');
+    showKerLeadTagListIdle('Type 2+ characters to search');
+}
+
+function showKerLeadTagListIdle(message) {
+    const listEl = document.getElementById('ker-lead-tag-list');
+    const hintEl = document.getElementById('ker-lead-tag-hint');
+    if (listEl) {
+        listEl.innerHTML = '<div class="ker-tag-empty">' + escHtml(message || 'Type 2+ characters to search') + '</div>';
+    }
+    if (hintEl) {
+        hintEl.textContent = 'Type at least 2 characters to search Kommo tags.';
+    }
+}
+
+function resetKerLeadTagPicker(clearSelection) {
+    if (kommoEntityRuleTagFilterTimer) {
+        clearTimeout(kommoEntityRuleTagFilterTimer);
+        kommoEntityRuleTagFilterTimer = null;
+    }
+    const searchEl = document.getElementById('ker-lead-tag-search');
+    if (searchEl) searchEl.value = '';
+    kommoEntityRulesTagsAll = [];
+    const countEl = document.getElementById('ker-lead-tag-count');
+    if (countEl) countEl.textContent = '';
+    if (clearSelection) {
+        setKerLeadTagSelection('', '', '');
+        showKerLeadTagListIdle('Type 2+ characters to search');
+    }
+}
+
+function pickKerLeadTag(btn) {
+    if (!btn) return;
+    if (kommoEntityRuleTagFilterTimer) {
+        clearTimeout(kommoEntityRuleTagFilterTimer);
+        kommoEntityRuleTagFilterTimer = null;
+    }
+    const value = btn.getAttribute('data-value') || '';
+    setKerLeadTagSelection(
+        value,
+        btn.getAttribute('data-source') || 'leads',
+        btn.getAttribute('data-name') || ''
+    );
+    const searchEl = document.getElementById('ker-lead-tag-search');
+    if (searchEl) searchEl.value = '';
+    kommoEntityRulesTagsAll = [];
+    const countEl = document.getElementById('ker-lead-tag-count');
+    if (countEl) countEl.textContent = '';
+    showKerLeadTagListIdle(
+        value ? 'Tag selected above. Search again to change.' : 'Type 2+ characters to search'
+    );
+}
+
+function renderKerLeadTagListHighlight() {
+    const listEl = document.getElementById('ker-lead-tag-list');
+    if (!listEl) return;
+    const cur = kerLeadTagSelection && kerLeadTagSelection.value ? kerLeadTagSelection.value : '';
+    listEl.querySelectorAll('.ker-tag-item').forEach(function(el) {
+        const v = el.getAttribute('data-value') || '';
+        el.classList.toggle('active', v === cur);
+    });
+}
+
+function getKerLeadTagForSave() {
+    if (!kerLeadTagSelection || !kerLeadTagSelection.value) {
+        return { tagId: null, tagName: '' };
+    }
+    let tagId = null;
+    if (kerLeadTagSelection.source === 'leads' && kerLeadTagSelection.value.indexOf('lead:') === 0) {
+        tagId = parseInt(kerLeadTagSelection.value.substring(5), 10) || null;
+    }
+    return { tagId: tagId, tagName: kerLeadTagSelection.name || '' };
+}
+
+function ruleFlagHtml(on) {
+    return '<span class="rule-flag ' + (on ? 'rule-flag--yes' : 'rule-flag--no') + '">' + (on ? '✓' : '×') + '</span>';
+}
+
+async function loadKommoEntityRulesPage() {
+    await Promise.all([
+        loadKommoEntityRulesMeta(),
+        loadKommoEntityRulesPipelines(),
+        loadKommoEntityRules(),
+    ]);
+}
+
+async function loadKommoEntityRulesMeta() {
+    try {
+        kommoEntityRulesMeta = await api('GET', '/api/admin/kommo/entity-rules/meta');
+    } catch (e) {
+        kommoEntityRulesMeta = null;
+    }
+}
+
+async function loadKommoEntityRulesPipelines() {
+    try {
+        const r = await api('GET', '/api/admin/kommo/pipelines');
+        kommoEntityRulesPipelines = r.pipelines || [];
+    } catch (e) {
+        kommoEntityRulesPipelines = [];
+    }
+}
+
+async function loadKommoEntityRulesTags(searchQuery, selectedValue, savedTagName) {
+    const countEl = document.getElementById('ker-lead-tag-count');
+    const q = (searchQuery || '').trim();
+    if (countEl) countEl.textContent = '(loading…)';
+    try {
+        const path = q.length >= 2
+            ? ('/api/admin/kommo/tags?query=' + encodeURIComponent(q))
+            : '/api/admin/kommo/tags';
+        const r = await api('GET', path);
+        kommoEntityRulesTagsAll = r.tags || [];
+        if (countEl) {
+            if (q.length >= 2) {
+                countEl.textContent = '(' + kommoEntityRulesTagsAll.length + ' found)';
+            } else if (kommoEntityRulesTagsAll.length) {
+                countEl.textContent = '(' + kommoEntityRulesTagsAll.length + ' — type 2+ chars to search all)';
+            } else {
+                countEl.textContent = '(type 2+ chars to search)';
+            }
+        }
+    } catch (e) {
+        kommoEntityRulesTagsAll = [];
+        if (countEl) countEl.textContent = '(load failed: ' + (e.message || 'error') + ')';
+    }
+    filterKommoEntityRuleTags(selectedValue, savedTagName, kommoEntityRulesTagsAll);
+}
+
+function scheduleKommoEntityRuleTagFilter() {
+    if (kommoEntityRuleTagFilterTimer) clearTimeout(kommoEntityRuleTagFilterTimer);
+    kommoEntityRuleTagFilterTimer = setTimeout(function() {
+        const searchEl = document.getElementById('ker-lead-tag-search');
+        const q = (searchEl && searchEl.value || '').trim();
+        const selectedValue = kerLeadTagSelection && kerLeadTagSelection.value ? kerLeadTagSelection.value : '';
+        if (q.length >= 2) {
+            loadKommoEntityRulesTags(q, selectedValue, kerLeadTagSelection && kerLeadTagSelection.name);
+        } else {
+            kommoEntityRulesTagsAll = [];
+            const countEl = document.getElementById('ker-lead-tag-count');
+            if (countEl) countEl.textContent = '';
+            const idleMsg = q.length === 1
+                ? 'Type at least 2 characters…'
+                : (kerLeadTagSelection ? 'Tag selected above. Search again to change.' : 'Type 2+ characters to search');
+            showKerLeadTagListIdle(idleMsg);
+        }
+    }, 400);
+}
+
+function filterKommoEntityRuleTags(selectedValue, savedTagName, tags) {
+    const list = tags || kommoEntityRulesTagsAll;
+    fillKommoEntityRuleTags(selectedValue, savedTagName, list);
+}
+
+async function loadKommoEntityRules() {
+    const tbody = document.getElementById('kommo-entity-rules-tbody');
+    const statusEl = document.getElementById('kommo-entity-rules-status');
+    if (!tbody) return;
+    try {
+        if (!kommoEntityRulesMeta) await loadKommoEntityRulesMeta();
+        const r = await api('GET', '/api/admin/kommo/entity-rules');
+        kommoEntityRulesList = r.rules || [];
+        if (!kommoEntityRulesList.length) {
+            tbody.innerHTML = '<tr><td colspan="8" class="subtitle">No rules yet — click “Add rule”.</td></tr>';
+        } else {
+            tbody.innerHTML = kommoEntityRulesList.map(function(rule) {
+                const ct = (kommoEntityRulesMeta && kommoEntityRulesMeta.call_types && kommoEntityRulesMeta.call_types[rule.call_type]) || rule.call_type;
+                const createDeal = rule.entity_action === 'create_contact_and_lead';
+                const tagLabel = (rule.lead_tag_name || '').trim()
+                    || (rule.lead_tag_id ? ('#' + rule.lead_tag_id) : '—');
+                return '<tr>' +
+                    '<td>' + escHtml(rule.did || '—') + '</td>' +
+                    '<td>' + escHtml(ct) + '</td>' +
+                    '<td>' + ruleFlagHtml(createDeal) + '</td>' +
+                    '<td>' + ruleFlagHtml(createDeal) + '</td>' +
+                    '<td>' + escHtml(createDeal ? tagLabel : '—') + '</td>' +
+                    '<td>' + ruleFlagHtml(!!rule.create_task) + '</td>' +
+                    '<td>' + ruleFlagHtml(!!rule.enabled) + '</td>' +
+                    '<td style="white-space:nowrap">' +
+                        '<button type="button" class="btn btn-sm btn-outline" onclick="editKommoEntityRule(' + rule.id + ')">Edit</button> ' +
+                        '<button type="button" class="btn btn-sm btn-outline" onclick="deleteKommoEntityRule(' + rule.id + ')">Delete</button>' +
+                    '</td>' +
+                '</tr>';
+            }).join('');
+        }
+        if (statusEl) statusEl.innerHTML = '';
+    } catch (e) {
+        tbody.innerHTML = '<tr><td colspan="8" class="error-msg">' + escHtml(e.message) + '</td></tr>';
+    }
+}
+
+function fillKommoEntityRuleSelect(id, options, selected) {
+    const el = document.getElementById(id);
+    if (!el || !options) return;
+    el.innerHTML = Object.keys(options).map(function(key) {
+        const sel = key === selected ? ' selected' : '';
+        return '<option value="' + escAttr(key) + '"' + sel + '>' + escHtml(options[key]) + '</option>';
+    }).join('');
+}
+
+function fillKommoEntityRuleUsers() {
+    const defSel = document.getElementById('ker-default-user');
+    const taskSel = document.getElementById('ker-task-user');
+    const opts = '<option value="">—</option>' + kommoUsersList.map(function(u) {
+        return '<option value="' + escAttr(String(u.id)) + '">' + escHtml(kommoUserOptionLabel(u)) + '</option>';
+    }).join('');
+    if (defSel) defSel.innerHTML = opts;
+    if (taskSel) taskSel.innerHTML = opts;
+}
+
+function fillKommoEntityRulePipelines(selectedPipeline, selectedStatus) {
+    const pipeEl = document.getElementById('ker-pipeline');
+    if (!pipeEl) return;
+    let html = '<option value="">—</option>';
+    kommoEntityRulesPipelines.forEach(function(p) {
+        const sel = String(p.id) === String(selectedPipeline || '') ? ' selected' : '';
+        html += '<option value="' + escAttr(String(p.id)) + '"' + sel + '>' + escHtml(p.name) + '</option>';
+    });
+    pipeEl.innerHTML = html;
+    syncKommoEntityRuleStages(selectedStatus);
+}
+
+function syncKommoEntityRuleStages(selectedStatus) {
+    const pipeEl = document.getElementById('ker-pipeline');
+    const statusEl = document.getElementById('ker-status');
+    if (!pipeEl || !statusEl) return;
+    const pid = pipeEl.value;
+    const pipe = kommoEntityRulesPipelines.find(function(p) { return String(p.id) === String(pid); });
+    let html = '<option value="">—</option>';
+    (pipe && pipe.statuses || []).forEach(function(st) {
+        const sel = String(st.id) === String(selectedStatus || '') ? ' selected' : '';
+        html += '<option value="' + escAttr(String(st.id)) + '"' + sel + '>' + escHtml(st.name) + '</option>';
+    });
+    statusEl.innerHTML = html;
+}
+
+function fillKommoEntityRuleTags(selectedValue, savedTagName, tags) {
+    const listEl = document.getElementById('ker-lead-tag-list');
+    const hintEl = document.getElementById('ker-lead-tag-hint');
+    if (!listEl) return;
+    const list = tags || kommoEntityRulesTagsAll;
+    const shown = list.slice(0, KER_TAG_LIST_MAX);
+    let html = '';
+    if (!list.length) {
+        html = '<div class="ker-tag-empty">No tags found. Try another search.</div>';
+    } else {
+        const noneActive = !selectedValue && !(kerLeadTagSelection && kerLeadTagSelection.value);
+        html += '<button type="button" class="ker-tag-item' + (noneActive ? ' active' : '') + '" data-value="" data-source="" data-name="" onclick="pickKerLeadTag(this)"><span class="ker-tag-item-name">— none —</span></button>';
+        shown.forEach(function(tag) {
+            const optVal = tag.source === 'leads' ? ('lead:' + tag.id) : ('contact:' + tag.id);
+            const active = selectedValue && String(selectedValue) === optVal;
+            const suffix = tag.source === 'contacts' ? ' · contact' : '';
+            const fullName = tag.name + suffix;
+            html += '<button type="button" class="ker-tag-item' + (active ? ' active' : '') + '" data-value="' + escAttr(optVal) + '" data-source="' + escAttr(tag.source || 'leads') + '" data-name="' + escAttr(tag.name) + '" onclick="pickKerLeadTag(this)" title="' + escAttr(fullName) + '">';
+            html += '<span class="ker-tag-item-name">' + escHtml(truncateKerTagLabel(fullName, 72)) + '</span>';
+            if (tag.source === 'contacts') html += '<span class="ker-tag-item-badge">contact</span>';
+            html += '</button>';
+        });
+    }
+    listEl.innerHTML = html;
+    if (hintEl) {
+        if (list.length > KER_TAG_LIST_MAX) {
+            hintEl.textContent = 'Showing first ' + KER_TAG_LIST_MAX + ' of ' + list.length + ' — refine search to narrow down.';
+        } else if (list.length) {
+            hintEl.textContent = list.length + ' tag(s). Click a row to select.';
+        } else {
+            hintEl.textContent = 'Type at least 2 characters to search Kommo tags.';
+        }
+    }
+    if (selectedValue) {
+        let name = (savedTagName || '').trim();
+        if (!name && String(selectedValue).indexOf('name:') === 0) {
+            name = String(selectedValue).substring(5);
+        } else if (!name && String(selectedValue).indexOf('lead:') === 0) {
+            name = 'Tag #' + String(selectedValue).substring(5);
+        }
+        const src = String(selectedValue).indexOf('contact:') === 0 ? 'contacts' : 'leads';
+        setKerLeadTagSelection(selectedValue, src, name);
+    } else if (!kerLeadTagSelection) {
+        setKerLeadTagSelection('', '', '');
+    } else {
+        renderKerLeadTagListHighlight();
+    }
+}
+
+function syncKommoEntityRuleFields() {
+    const action = document.getElementById('ker-entity-action');
+    const dealFields = document.getElementById('ker-deal-fields');
+    const createTask = document.getElementById('ker-create-task');
+    const taskFields = document.getElementById('ker-task-fields');
+    const taskResp = document.getElementById('ker-task-responsible');
+    const taskUserWrap = document.getElementById('ker-task-user');
+    if (dealFields && action) {
+        dealFields.style.display = action.value === 'create_contact_and_lead' ? '' : 'none';
+    }
+    if (taskFields && createTask) {
+        taskFields.style.display = createTask.checked ? '' : 'none';
+    }
+    if (taskUserWrap && taskResp) {
+        taskUserWrap.parentElement.style.display = taskResp.value === 'specific' ? '' : 'none';
+    }
+}
+
+function showKommoEntityRuleEditor(rule) {
+    const editor = document.getElementById('kommo-entity-rule-editor');
+    if (!editor) return;
+    editor.classList.remove('hidden');
+    document.getElementById('kommo-entity-rule-editor-title').textContent = rule && rule.id ? 'Edit rule' : 'New rule';
+    document.getElementById('ker-id').value = rule && rule.id ? String(rule.id) : '';
+    document.getElementById('ker-did').value = (rule && rule.did) || '';
+    document.getElementById('ker-enabled').checked = rule ? !!rule.enabled : true;
+    document.getElementById('ker-create-task').checked = rule ? !!rule.create_task : false;
+    document.getElementById('ker-contact-template').value = (rule && rule.contact_name_template) || 'New contact <PhoneNumber>';
+    document.getElementById('ker-lead-template').value = (rule && rule.lead_name_template) || 'New deal <PhoneNumber>';
+    document.getElementById('ker-task-template').value = (rule && rule.task_name_template) || 'Call back <PhoneNumber>';
+    document.getElementById('ker-task-deadline').value = rule ? String(rule.task_deadline_hours || 0) : '1';
+    if (kommoEntityRulesMeta) {
+        fillKommoEntityRuleSelect('ker-call-type', kommoEntityRulesMeta.call_types, (rule && rule.call_type) || 'missed_incoming_unknown');
+        fillKommoEntityRuleSelect('ker-entity-action', kommoEntityRulesMeta.entity_actions, (rule && rule.entity_action) || 'none');
+        fillKommoEntityRuleSelect('ker-task-responsible', kommoEntityRulesMeta.task_responsible_modes, (rule && rule.task_responsible) || 'client_owner');
+    }
+    if (!kommoUsersList.length) loadKommoUsersList().then(fillKommoEntityRuleUsers);
+    else fillKommoEntityRuleUsers();
+    if (rule && rule.default_responsible_user_id) document.getElementById('ker-default-user').value = String(rule.default_responsible_user_id);
+    if (rule && rule.task_responsible_user_id) document.getElementById('ker-task-user').value = String(rule.task_responsible_user_id);
+    fillKommoEntityRulePipelines(rule && rule.pipeline_id, rule && rule.status_id);
+    if (kommoEntityRuleTagFilterTimer) {
+        clearTimeout(kommoEntityRuleTagFilterTimer);
+        kommoEntityRuleTagFilterTimer = null;
+    }
+    const searchEl = document.getElementById('ker-lead-tag-search');
+    if (searchEl) searchEl.value = '';
+    kommoEntityRulesTagsAll = [];
+    kerLeadTagSelection = null;
+    const savedName = (rule && rule.lead_tag_name) || '';
+    if (rule && rule.lead_tag_id) {
+        setKerLeadTagSelection('lead:' + rule.lead_tag_id, 'leads', savedName);
+    } else if (savedName) {
+        setKerLeadTagSelection('name:' + savedName, 'leads', savedName);
+    } else {
+        setKerLeadTagSelection('', '', '');
+    }
+    const countEl = document.getElementById('ker-lead-tag-count');
+    if (countEl) countEl.textContent = savedName ? '(saved)' : '';
+    showKerLeadTagListIdle(
+        savedName ? 'Tag selected above. Search again to change.' : 'Type 2+ characters to search'
+    );
+    syncKommoEntityRuleFields();
+    const st = document.getElementById('kommo-entity-rule-status');
+    if (st) st.innerHTML = '';
+}
+
+function newKommoEntityRule() {
+    showKommoEntityRuleEditor(null);
+}
+
+function editKommoEntityRule(id) {
+    const rule = kommoEntityRulesList.find(function(r) { return r.id === id; });
+    if (rule) showKommoEntityRuleEditor(rule);
+}
+
+function cancelKommoEntityRuleEdit() {
+    resetKerLeadTagPicker(true);
+    const editor = document.getElementById('kommo-entity-rule-editor');
+    if (editor) editor.classList.add('hidden');
+}
+
+async function saveKommoEntityRule() {
+    const st = document.getElementById('kommo-entity-rule-status');
+    try {
+        const tagSave = getKerLeadTagForSave();
+        const body = {
+            id: document.getElementById('ker-id').value ? parseInt(document.getElementById('ker-id').value, 10) : null,
+            did: document.getElementById('ker-did').value.trim(),
+            call_type: document.getElementById('ker-call-type').value,
+            entity_action: document.getElementById('ker-entity-action').value,
+            pipeline_id: parseInt(document.getElementById('ker-pipeline').value, 10) || null,
+            status_id: parseInt(document.getElementById('ker-status').value, 10) || null,
+            default_responsible_user_id: parseInt(document.getElementById('ker-default-user').value, 10) || null,
+            contact_name_template: document.getElementById('ker-contact-template').value.trim(),
+            lead_name_template: document.getElementById('ker-lead-template').value.trim(),
+            lead_tag_id: tagSave.tagId,
+            lead_tag_name: tagSave.tagName,
+            create_task: document.getElementById('ker-create-task').checked,
+            task_name_template: document.getElementById('ker-task-template').value.trim(),
+            task_responsible: document.getElementById('ker-task-responsible').value,
+            task_responsible_user_id: parseInt(document.getElementById('ker-task-user').value, 10) || null,
+            task_deadline_hours: parseInt(document.getElementById('ker-task-deadline').value, 10) || 0,
+            enabled: document.getElementById('ker-enabled').checked,
+        };
+        await api('POST', '/api/admin/kommo/entity-rules', body);
+        if (st) st.innerHTML = '<span class="success">Saved.</span>';
+        cancelKommoEntityRuleEdit();
+        await loadKommoEntityRules();
+    } catch (e) {
+        if (st) st.innerHTML = '<span class="error-msg">' + escHtml(e.message) + '</span>';
+    }
+}
+
+async function deleteKommoEntityRule(id) {
+    if (!confirm('Delete this rule?')) return;
+    try {
+        await api('DELETE', '/api/admin/kommo/entity-rules/' + id);
+        await loadKommoEntityRules();
+    } catch (e) {
+        alert(e.message);
+    }
 }
 
 function renderConnBadge(ok) {
@@ -2323,6 +3503,848 @@ async function saveSoftphoneAccountEdit() {
     } catch (e) {
         if (status) status.innerHTML = '<span class="error-msg">' + escHtml(e.message) + '</span>';
     }
+}
+
+// ==================== Kommo call logs (admin) ====================
+function stopKommoLogsPolling() {
+    if (kommoLogsTimer) {
+        clearInterval(kommoLogsTimer);
+        kommoLogsTimer = null;
+    }
+}
+
+function startKommoLogsPolling() {
+    stopKommoLogsPolling();
+    kommoLogsTimer = setInterval(() => {
+        const pg = document.getElementById('page-kommo-logs');
+        if (pg && pg.classList.contains('active')) loadKommoLogs(true);
+    }, 30000);
+}
+
+async function loadKommoLogsPage() {
+    await populateKommoLogsExtensionFilter();
+    await loadKommoLogs();
+}
+
+async function populateKommoLogsExtensionFilter() {
+    const sel = document.getElementById('kommo-logs-ext');
+    if (!sel) return;
+    const prev = sel.value;
+    if (!allExtensions.length) {
+        try {
+            const data = await api('GET', '/api/extensions');
+            allExtensions = data.extensions || data || [];
+        } catch (_) { /* ignore */ }
+    }
+    const exts = (allExtensions || [])
+        .map(e => String(e.extension || '').trim())
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b));
+    let html = '<option value="">All</option>';
+    for (const ext of exts) {
+        html += '<option value="' + escAttr(ext) + '">' + escHtml(ext) + '</option>';
+    }
+    sel.innerHTML = html;
+    if (prev && exts.includes(prev)) sel.value = prev;
+}
+
+function formatKommoCallTime(iso) {
+    if (!iso) return '—';
+    try {
+        const d = new Date(iso);
+        if (isNaN(d.getTime())) return escHtml(String(iso));
+        return escHtml(d.toLocaleString());
+    } catch (_) {
+        return escHtml(String(iso));
+    }
+}
+
+function kommoLogStatusBadge(item) {
+    const st = item.status || '';
+    if (st === 'uploaded' && item.recording_attached) {
+        return '<span class="kommo-log-badge kommo-log-badge--ok">uploaded</span>';
+    }
+    if (st === 'uploaded' && item.note_only) {
+        return '<span class="kommo-log-badge kommo-log-badge--warn">uploaded</span>';
+    }
+    if (st === 'failed') {
+        return '<span class="kommo-log-badge kommo-log-badge--err">failed</span>';
+    }
+    if (st === 'queued' || st === 'waiting_recording' || st === 'processing') {
+        return '<span class="kommo-log-badge kommo-log-badge--proc">' + escHtml(st) + '</span>';
+    }
+    return '<span class="kommo-log-badge kommo-log-badge--muted">' + escHtml(st || '—') + '</span>';
+}
+
+function kommoLogRecordingCell(item) {
+    if (item.recording_attached) return '<span class="kommo-log-badge kommo-log-badge--ok">Yes</span>';
+    if (item.note_only) return '<span class="kommo-log-badge kommo-log-badge--warn">No (empty)</span>';
+    if (item.status === 'uploaded' && !item.upload_source) {
+        return '<span class="kommo-log-badge kommo-log-badge--warn">No</span>';
+    }
+    if (item.status === 'failed' || item.status === 'skipped') {
+        return '<span class="kommo-log-badge kommo-log-badge--err">—</span>';
+    }
+    return '<span class="kommo-log-badge kommo-log-badge--muted">—</span>';
+}
+
+function kommoLogFromCell(item) {
+    const from = (item.call_from_label || '').trim();
+    if (!from) return '<span style="color:#555">—</span>';
+    return escHtml(from);
+}
+
+function kommoLogCrmCell(item) {
+    let url = item.crm_url || '';
+    let label = item.crm_label || '';
+    const base = (kommoAccountUrl || '').replace(/\/$/, '');
+    if (!url && base) {
+        if (item.lead_id) {
+            url = base + '/leads/detail/' + item.lead_id;
+            label = 'Lead #' + item.lead_id;
+        } else if (item.contact_id) {
+            url = base + '/contacts/detail/' + item.contact_id;
+            label = 'Contact #' + item.contact_id;
+        }
+    }
+    if (!url) return '<span style="color:#555">—</span>';
+    const title = escAttr(label || 'Open in Kommo');
+    return '<a class="kommo-crm-btn" href="' + escAttr(url) + '" target="_blank" rel="noopener" title="' + title + '">' +
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>' +
+        escHtml(label || 'Open') + '</a>';
+}
+
+function kommoLogsUpdateHead(view) {
+    const row = document.getElementById('kommo-logs-thead-row');
+    const callWrap = document.getElementById('kommo-logs-call-status-wrap');
+    const uploadWrap = document.getElementById('kommo-logs-upload-status-wrap');
+    if (!row) return;
+    if (view === 'inbound') {
+        if (callWrap) callWrap.classList.remove('hidden');
+        if (uploadWrap) uploadWrap.classList.add('hidden');
+        row.innerHTML =
+            '<th>Call time</th><th>Extension</th><th>Phone</th><th>Call</th><th>Dur</th>' +
+            '<th>Task</th><th>CRM</th><th>Upload</th><th style="min-width:120px">Action</th>';
+    } else {
+        if (callWrap) callWrap.classList.add('hidden');
+        if (uploadWrap) uploadWrap.classList.remove('hidden');
+        row.innerHTML =
+            '<th>Call time</th><th>Extension</th><th>Phone</th><th title="Outbound Caller ID">From</th><th>Dir</th><th>Dur</th>' +
+            '<th>Status</th><th>Recording</th><th>CRM</th><th>Reason</th><th style="min-width:120px">Action</th>';
+    }
+}
+
+function kommoLogCallStatusBadge(item) {
+    const st = item.call_status || (item.was_answered ? 'answered' : 'missed');
+    if (st === 'answered') {
+        return '<span class="kommo-log-badge kommo-log-badge--ok">Answered</span>';
+    }
+    return '<span class="kommo-log-badge kommo-log-badge--warn">Missed</span>';
+}
+
+function kommoLogTaskCell(item) {
+    if (item.task_created) {
+        if (item.task_url) {
+            return '<a class="kommo-crm-btn" href="' + escAttr(item.task_url) + '" target="_blank" rel="noopener" title="' +
+                escAttr(item.task_label || 'Task') + '">' + escHtml(item.task_label || 'Task') + '</a>';
+        }
+        return '<span class="kommo-log-badge kommo-log-badge--ok">Yes</span>';
+    }
+    return '<span class="kommo-log-badge kommo-log-badge--muted">—</span>';
+}
+
+function kommoLogInboundCrmCell(item) {
+    const parts = [];
+    if (item.crm_url) {
+        parts.push('<a class="kommo-crm-btn" href="' + escAttr(item.crm_url) + '" target="_blank" rel="noopener">' +
+            escHtml(item.crm_label || 'CRM') + '</a>');
+    }
+    if (!parts.length) return '<span style="color:#555">—</span>';
+    return parts.join(' ');
+}
+
+function kommoLogUploadStatusCell(item) {
+    if (!item.upload_status) {
+        return '<span class="kommo-log-badge kommo-log-badge--muted">—</span>';
+    }
+    return kommoLogStatusBadge(item);
+}
+
+function kommoLogActionCell(item) {
+    const jobId = item.job_id || item.id;
+    if (!jobId || item.source === 'pbx_cdr' && !item.job_id) return '';
+    const id = escAttr(jobId);
+    if (kommoLogsRetrying[jobId]) {
+        return '<span style="color:#8b8fa3;font-size:12px">Sending…</span>';
+    }
+    let html = '';
+    if (item.can_reupload !== false) {
+        html += '<button type="button" class="btn btn-sm" title="Re-resolve PBX CDR and upload to Kommo (pick lead)" onclick="openKommoReuploadModal(\'' + id + '\')">Upload</button>';
+    }
+    if (item.can_retry) {
+        const stuck = item.status === 'queued' || item.status === 'processing' || item.status === 'waiting_recording';
+        const label = stuck ? 'Restart job' : 'Send to Amo';
+        const title = stuck
+            ? 'Requeue job, reset retries, and wake Kommo workers'
+            : 'Fetch PBX recording and upload to Amo again';
+        html += '<button type="button" class="btn btn-sm btn-outline" title="' + escAttr(title) + '" onclick="retryKommoJob(\'' + id + '\')">' + escHtml(label) + '</button>';
+    }
+    if (!html) return '';
+    return '<div class="kommo-log-actions">' + html + '</div>';
+}
+
+async function loadKommoLogs(silent) {
+    const tbody = document.getElementById('kommo-logs-tbody');
+    const footer = document.getElementById('kommo-logs-footer');
+    const statusEl = document.getElementById('kommo-logs-status');
+    if (!tbody) return;
+    const view = document.getElementById('kommo-logs-view')?.value || 'inbound';
+    kommoLogsUpdateHead(view);
+    const colSpan = view === 'inbound' ? 9 : 11;
+    if (!silent) {
+        tbody.innerHTML = '<tr><td colspan="' + colSpan + '" style="color:#555;padding:20px">Loading…</td></tr>';
+        if (statusEl) statusEl.innerHTML = '';
+    }
+    const hours = parseInt(document.getElementById('kommo-logs-hours')?.value || '72', 10) || 72;
+    const ext = (document.getElementById('kommo-logs-ext')?.value || '').trim();
+    const phone = (document.getElementById('kommo-logs-phone')?.value || '').trim();
+    const params = new URLSearchParams({ hours: String(hours), limit: '200', offset: '0' });
+    if (ext) params.set('extension', ext);
+    if (phone) params.set('phone', phone);
+    try {
+        if (view === 'inbound') {
+            const callSt = (document.getElementById('kommo-logs-call-status')?.value || '').trim();
+            if (callSt) params.set('call_status', callSt);
+            const data = await api('GET', '/api/admin/kommo/inbound-call-log?' + params.toString());
+            kommoAccountUrl = data.kommo_account_url || kommoAccountUrl || '';
+            const items = data.items || [];
+            if (!items.length) {
+                tbody.innerHTML = '<tr><td colspan="9" style="color:#555;padding:20px">No inbound calls in this period.</td></tr>';
+            } else {
+                let html = '';
+                for (const item of items) {
+                    const extLabel = escHtml(item.extension || '—');
+                    const kommoName = item.kommo_user_name ? '<br><span style="color:#6b7080;font-size:11px">' + escHtml(item.kommo_user_name) + '</span>' : '';
+                    const durCell = (item.duration_seconds != null && item.duration_seconds > 0)
+                        ? escHtml(String(item.duration_seconds)) + 's' : '—';
+                    html += '<tr data-linkedid="' + escAttr(item.linkedid || item.id) + '">' +
+                        '<td style="white-space:nowrap">' + formatKommoCallTime(item.call_time) + '</td>' +
+                        '<td><strong>' + extLabel + '</strong>' + kommoName + '</td>' +
+                        '<td>' + escHtml(item.phone || '') + '</td>' +
+                        '<td>' + kommoLogCallStatusBadge(item) + '</td>' +
+                        '<td>' + durCell + '</td>' +
+                        '<td>' + kommoLogTaskCell(item) + '</td>' +
+                        '<td>' + kommoLogInboundCrmCell(item) + '</td>' +
+                        '<td>' + kommoLogUploadStatusCell(item) + '</td>' +
+                        '<td>' + kommoLogActionCell(item) + '</td>' +
+                        '</tr>';
+                }
+                tbody.innerHTML = html;
+            }
+            if (footer) {
+                footer.textContent = 'Showing ' + items.length + ' of ' + (data.total || items.length) + ' inbound calls';
+                if (data.kommo_account_url) {
+                    footer.innerHTML += ' · <a href="' + escAttr(data.kommo_account_url) + '" target="_blank" rel="noopener">Open Kommo</a>';
+                }
+            }
+            return;
+        }
+        const st = (document.getElementById('kommo-logs-status-filter')?.value || '').trim();
+        if (st) params.set('status', st);
+        const data = await api('GET', '/api/admin/kommo/call-jobs?' + params.toString());
+        kommoAccountUrl = data.kommo_account_url || kommoAccountUrl || '';
+        const items = data.items || [];
+        if (!items.length) {
+            tbody.innerHTML = '<tr><td colspan="11" style="color:#555;padding:20px">No call jobs in this period.</td></tr>';
+        } else {
+            let html = '';
+            for (const item of items) {
+                const extLabel = escHtml(item.extension || '');
+                const kommoName = item.kommo_user_name ? '<br><span style="color:#6b7080;font-size:11px">' + escHtml(item.kommo_user_name) + '</span>' : '';
+                const crm = kommoLogCrmCell(item);
+                const dir = item.is_incoming ? 'In' : 'Out';
+                let durCell = (item.duration_seconds != null && item.duration_seconds > 0)
+                    ? escHtml(String(item.duration_seconds)) + 's'
+                    : '—';
+                if (item.pbx_billsec != null && item.client_duration_seconds
+                    && Math.abs(item.pbx_billsec - item.client_duration_seconds) > 5) {
+                    durCell += ' <span style="color:#8b8fa3;font-size:11px" title="Client timer (ring+talk)">('
+                        + escHtml(String(item.client_duration_seconds)) + 's softphone)</span>';
+                }
+                const reason = item.reason ? escHtml(String(item.reason)) : '';
+                html += '<tr data-job-id="' + escAttr(item.id) + '">' +
+                    '<td style="white-space:nowrap">' + formatKommoCallTime(item.call_time || item.created_at) + '</td>' +
+                    '<td><strong>' + extLabel + '</strong>' + kommoName + '</td>' +
+                    '<td>' + escHtml(item.phone || '') + '</td>' +
+                    '<td style="white-space:nowrap">' + kommoLogFromCell(item) + '</td>' +
+                    '<td>' + dir + '</td>' +
+                    '<td>' + durCell + '</td>' +
+                    '<td>' + kommoLogStatusBadge(item) + '</td>' +
+                    '<td>' + kommoLogRecordingCell(item) + '</td>' +
+                    '<td>' + crm + '</td>' +
+                    '<td style="max-width:220px;font-size:12px;color:#8b8fa3">' + reason + '</td>' +
+                    '<td>' + kommoLogActionCell(item) + '</td>' +
+                    '</tr>';
+            }
+            tbody.innerHTML = html;
+        }
+        if (footer) {
+            footer.textContent = 'Showing ' + items.length + ' of ' + (data.total || items.length) + ' jobs';
+            if (data.kommo_account_url) {
+                footer.innerHTML += ' · <a href="' + escAttr(data.kommo_account_url) + '" target="_blank" rel="noopener">Open Kommo</a>';
+            }
+        }
+    } catch (e) {
+        tbody.innerHTML = '<tr><td colspan="11" style="color:#ff8a8a;padding:20px">' + escHtml(e.message) + '</td></tr>';
+        if (statusEl) statusEl.innerHTML = '<span class="error-msg">' + escHtml(e.message) + '</span>';
+    }
+}
+
+async function retryKommoJob(jobId) {
+    const statusEl = document.getElementById('kommo-logs-status');
+    if (!jobId || kommoLogsRetrying[jobId]) return;
+    kommoLogsRetrying[jobId] = true;
+    await loadKommoLogs(true);
+    try {
+        await api('POST', '/api/admin/kommo/call-jobs/' + encodeURIComponent(jobId) + '/retry');
+        if (statusEl) statusEl.innerHTML = '<span class="success">Job requeued — Kommo workers will pick it up shortly.</span>';
+        await loadKommoLogs(true);
+    } catch (e) {
+        if (statusEl) statusEl.innerHTML = '<span class="error-msg">' + escHtml(e.message) + '</span>';
+        await loadKommoLogs(true);
+    } finally {
+        delete kommoLogsRetrying[jobId];
+    }
+}
+
+let kommoReuploadJobId = '';
+let kommoReuploadLeadId = null;
+let kommoReuploadItems = [];
+
+function closeKommoReuploadModal() {
+    const modal = document.getElementById('kommo-reupload-modal');
+    if (modal) modal.classList.add('hidden');
+    kommoReuploadJobId = '';
+    kommoReuploadLeadId = null;
+    kommoReuploadItems = [];
+    const statusEl = document.getElementById('kommo-reupload-status');
+    if (statusEl) statusEl.innerHTML = '';
+}
+
+function renderKommoReuploadLeads(items, selectedLeadId) {
+    const box = document.getElementById('kommo-reupload-leads');
+    if (!box) return;
+    if (!items.length) {
+        box.innerHTML = '<p style="color:#8b8fa3;font-size:13px;padding:8px 0">No open leads found for this number. Upload will use automatic lead resolution.</p>';
+        kommoReuploadLeadId = selectedLeadId || null;
+        return;
+    }
+    let html = '<div style="display:flex;flex-direction:column;gap:8px">';
+    for (const lead of items) {
+        const checked = String(lead.id) === String(selectedLeadId) ? ' checked' : '';
+        html += '<label style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid #2a2d37;border-radius:8px;cursor:pointer">' +
+            '<input type="radio" name="kommo-reupload-lead" value="' + escAttr(String(lead.id)) + '"' + checked +
+            ' onchange="kommoReuploadLeadId=parseInt(this.value,10)||null">' +
+            '<span><strong>' + escHtml(lead.name || ('Lead #' + lead.id)) + '</strong><br>' +
+            '<span style="color:#6b7080;font-size:12px">Lead #' + escHtml(String(lead.id)) +
+            (lead.contact_id ? ' · contact #' + escHtml(String(lead.contact_id)) : '') +
+            '</span></span></label>';
+    }
+    html += '</div>';
+    box.innerHTML = html;
+    kommoReuploadLeadId = selectedLeadId || (items[0] ? items[0].id : null);
+}
+
+async function openKommoReuploadModal(jobId) {
+    if (!jobId || kommoLogsRetrying[jobId]) return;
+    const modal = document.getElementById('kommo-reupload-modal');
+    const statusEl = document.getElementById('kommo-reupload-status');
+    if (!modal) return;
+    kommoReuploadJobId = jobId;
+    kommoReuploadLeadId = null;
+    kommoReuploadItems = [];
+    if (statusEl) statusEl.innerHTML = '<span style="color:#8b8fa3">Loading leads…</span>';
+    modal.classList.remove('hidden');
+    const tbody = document.getElementById('kommo-logs-tbody');
+    let phone = '';
+    let extension = '';
+    let currentLeadId = null;
+    try {
+        const hours = parseInt(document.getElementById('kommo-logs-hours')?.value || '72', 10) || 72;
+        const params = new URLSearchParams({ hours: String(hours), limit: '200', offset: '0' });
+        const data = await api('GET', '/api/admin/kommo/call-jobs?' + params.toString());
+        const item = (data.items || []).find(function(j) { return j.id === jobId; });
+        if (item) {
+            phone = item.phone || '';
+            extension = item.extension || '';
+            currentLeadId = item.lead_id || null;
+        }
+    } catch (e) {
+        if (statusEl) statusEl.innerHTML = '<span class="error-msg">' + escHtml(e.message) + '</span>';
+        return;
+    }
+    const subEl = document.getElementById('kommo-reupload-sub');
+    if (subEl) {
+        subEl.textContent = 'Pick an open lead for ' + (phone || 'this call') + '. The job will be requeued and PBX CDR matching will run again.';
+    }
+    if (!phone || !extension) {
+        if (statusEl) statusEl.innerHTML = '<span class="error-msg">Missing phone or extension on this job.</span>';
+        return;
+    }
+    try {
+        const leadParams = new URLSearchParams({ phone: phone, extension: extension });
+        const leadData = await api('GET', '/api/admin/kommo/leads-for-phone?' + leadParams.toString());
+        kommoReuploadItems = leadData.items || [];
+        kommoReuploadLeadId = currentLeadId;
+        renderKommoReuploadLeads(kommoReuploadItems, currentLeadId);
+        if (statusEl) statusEl.innerHTML = '';
+    } catch (e) {
+        if (statusEl) statusEl.innerHTML = '<span class="error-msg">' + escHtml(e.message) + '</span>';
+    }
+}
+
+async function submitKommoReupload() {
+    const statusEl = document.getElementById('kommo-logs-status');
+    const modalStatus = document.getElementById('kommo-reupload-status');
+    const jobId = kommoReuploadJobId;
+    if (!jobId || kommoLogsRetrying[jobId]) return;
+    kommoLogsRetrying[jobId] = true;
+    const submitBtn = document.getElementById('kommo-reupload-submit');
+    if (submitBtn) submitBtn.disabled = true;
+    try {
+        const body = {};
+        if (kommoReuploadLeadId) body.lead_id = kommoReuploadLeadId;
+        await api('POST', '/api/admin/kommo/call-jobs/' + encodeURIComponent(jobId) + '/reupload', body);
+        closeKommoReuploadModal();
+        if (statusEl) statusEl.innerHTML = '<span class="success">Job requeued for re-upload — Kommo workers will pick it up shortly.</span>';
+        await loadKommoLogs(true);
+    } catch (e) {
+        if (modalStatus) modalStatus.innerHTML = '<span class="error-msg">' + escHtml(e.message) + '</span>';
+    } finally {
+        if (submitBtn) submitBtn.disabled = false;
+        delete kommoLogsRetrying[jobId];
+    }
+}
+
+// ==================== Dashboard ====================
+let dashCalls = [];        // aggregated one-per-call records from the server
+let dashExtNames = {};     // ext -> display name
+let dashPeriodDays = 7;    // 0 = custom range
+let dashSort = { key: 'start', dir: -1 };
+let dashLoading = false;
+let dashChartData = { users: [], countries: [], talk: [] };
+
+// Calling code -> ISO region. Codes 1 (US/CA) and 7 (RU/KZ) are special-cased
+// in dashCountry(). Country display names come from Intl.DisplayNames.
+const DASH_DIAL = {
+    '20':'EG','27':'ZA','30':'GR','31':'NL','32':'BE','33':'FR','34':'ES','36':'HU','39':'IT','40':'RO','41':'CH','43':'AT','44':'GB','45':'DK','46':'SE','47':'NO','48':'PL','49':'DE',
+    '51':'PE','52':'MX','53':'CU','54':'AR','55':'BR','56':'CL','57':'CO','58':'VE','60':'MY','61':'AU','62':'ID','63':'PH','64':'NZ','65':'SG','66':'TH',
+    '81':'JP','82':'KR','84':'VN','86':'CN','90':'TR','91':'IN','92':'PK','93':'AF','94':'LK','95':'MM','98':'IR',
+    '211':'SS','212':'MA','213':'DZ','216':'TN','218':'LY','220':'GM','221':'SN','222':'MR','223':'ML','224':'GN','225':'CI','226':'BF','227':'NE','228':'TG','229':'BJ',
+    '230':'MU','231':'LR','232':'SL','233':'GH','234':'NG','235':'TD','236':'CF','237':'CM','238':'CV','239':'ST','240':'GQ','241':'GA','242':'CG','243':'CD','244':'AO','245':'GW','248':'SC','249':'SD',
+    '250':'RW','251':'ET','252':'SO','253':'DJ','254':'KE','255':'TZ','256':'UG','257':'BI','258':'MZ','260':'ZM','261':'MG','262':'RE','263':'ZW','264':'NA','265':'MW','266':'LS','267':'BW','268':'SZ','269':'KM',
+    '291':'ER','297':'AW','298':'FO','299':'GL',
+    '350':'GI','351':'PT','352':'LU','353':'IE','354':'IS','355':'AL','356':'MT','357':'CY','358':'FI','359':'BG',
+    '370':'LT','371':'LV','372':'EE','373':'MD','374':'AM','375':'BY','376':'AD','377':'MC','378':'SM','380':'UA','381':'RS','382':'ME','383':'XK','385':'HR','386':'SI','387':'BA','389':'MK',
+    '420':'CZ','421':'SK','423':'LI',
+    '501':'BZ','502':'GT','503':'SV','504':'HN','505':'NI','506':'CR','507':'PA','509':'HT',
+    '591':'BO','592':'GY','593':'EC','595':'PY','597':'SR','598':'UY','599':'CW',
+    '670':'TL','673':'BN','674':'NR','675':'PG','676':'TO','677':'SB','678':'VU','679':'FJ','680':'PW','682':'CK','685':'WS','686':'KI','687':'NC','689':'PF',
+    '850':'KP','852':'HK','853':'MO','855':'KH','856':'LA','880':'BD','886':'TW',
+    '960':'MV','961':'LB','962':'JO','963':'SY','964':'IQ','965':'KW','966':'SA','967':'YE','968':'OM','970':'PS','971':'AE','972':'IL','973':'BH','974':'QA','975':'BT','976':'MN','977':'NP',
+    '992':'TJ','993':'TM','994':'AZ','995':'GE','996':'KG','998':'UZ'
+};
+
+let _dashRegionNames = null;
+function dashRegion(iso, labelOverride) {
+    if (_dashRegionNames === null) {
+        try { _dashRegionNames = new Intl.DisplayNames(['en'], { type: 'region' }); }
+        catch (_) { _dashRegionNames = false; }
+    }
+    let label = labelOverride || iso;
+    if (!labelOverride && _dashRegionNames) {
+        try { label = _dashRegionNames.of(iso) || iso; } catch (_) { /* keep iso */ }
+    }
+    const flag = iso && iso.length === 2 && iso !== 'XK'
+        ? String.fromCodePoint(...[...iso].map((c) => 0x1F1A5 + c.charCodeAt(0)))
+        : '\u{1F310}';
+    return { iso, label, flag };
+}
+
+/** Resolve a phone number to a country, or null for internal/short numbers. */
+function dashCountry(phone) {
+    let d = String(phone || '').replace(/\D/g, '');
+    if (!d) return null;
+    if (d.startsWith('00')) d = d.slice(2);
+    if (d.startsWith('810')) d = d.slice(3);            // RU international dial-out prefix
+    if (d.length === 11 && d[0] === '8') d = '7' + d.slice(1); // RU domestic format
+    if (d.length < 7) return null;                       // extension-sized, not a phone
+    if (d[0] === '7') return dashRegion((d[1] === '6' || d[1] === '7') ? 'KZ' : 'RU');
+    if (d[0] === '1') return dashRegion('US', 'USA / Canada');
+    for (let len = 3; len >= 2; len--) {
+        const iso = DASH_DIAL[d.slice(0, len)];
+        if (iso) return dashRegion(iso);
+    }
+    return { iso: '', label: 'Unknown', flag: '\u{1F310}' };
+}
+
+const DASH_DEVICE_LABELS = { web: 'Web softphone (PC)', sip: 'SIP device / mobile', unknown: 'Unknown' };
+const DASH_DIR_LABELS = { outgoing: '↗ Out', incoming: '↙ In', internal: '⇄ Internal' };
+
+function dashFmtDur(sec) {
+    sec = Math.max(0, Math.round(sec || 0));
+    const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+    if (h) return h + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+    return m + ':' + String(s).padStart(2, '0');
+}
+function dashFmtHours(sec) {
+    sec = Math.max(0, sec || 0);
+    if (sec < 3600) return Math.round(sec / 60) + ' min';
+    return (sec / 3600).toFixed(1) + ' h';
+}
+function dashLocalIso(dt) {
+    const p = (n) => String(n).padStart(2, '0');
+    return dt.getFullYear() + '-' + p(dt.getMonth() + 1) + '-' + p(dt.getDate()) +
+        'T' + p(dt.getHours()) + ':' + p(dt.getMinutes()) + ':' + p(dt.getSeconds());
+}
+
+function dashSetPeriod(days, btn) {
+    dashPeriodDays = days;
+    document.querySelectorAll('#dash-period-seg button').forEach((b) => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    const custom = document.getElementById('dash-custom-range');
+    if (days === 0) {
+        custom.classList.remove('hidden');
+        if (!document.getElementById('dash-from').value) {
+            const from = new Date(); from.setDate(from.getDate() - 7); from.setHours(0, 0, 0, 0);
+            document.getElementById('dash-from').value = dashLocalIso(from).slice(0, 16);
+            document.getElementById('dash-to').value = dashLocalIso(new Date()).slice(0, 16);
+        }
+        return; // user presses Apply
+    }
+    custom.classList.add('hidden');
+    loadDashboard();
+}
+
+function dashRange() {
+    const now = new Date();
+    if (dashPeriodDays === 0) {
+        return {
+            from: (document.getElementById('dash-from').value || '').trim(),
+            to: (document.getElementById('dash-to').value || '').trim(),
+        };
+    }
+    const from = new Date(now);
+    if (dashPeriodDays === 1) from.setHours(0, 0, 0, 0);
+    else { from.setDate(from.getDate() - dashPeriodDays); from.setHours(0, 0, 0, 0); }
+    return { from: dashLocalIso(from), to: dashLocalIso(now) };
+}
+
+async function loadDashboard() {
+    if (dashLoading) return;
+    dashLoading = true;
+    const statusEl = document.getElementById('dash-status');
+    statusEl.innerHTML = '<div class="dash-empty">Loading CDR…</div>';
+    try {
+        let qs = '?limit=10000';
+        if (dashPeriodDays === 0) {
+            const r = dashRange();
+            if (r.from) qs += '&from=' + encodeURIComponent(r.from);
+            if (r.to) qs += '&to=' + encodeURIComponent(r.to);
+        } else {
+            const hours = dashPeriodDays === 1 ? 24 : dashPeriodDays * 24;
+            qs += '&hours=' + hours;
+        }
+        const data = await api('GET', '/api/admin/cdr-dashboard' + qs);
+        dashExtNames = data.extensions || {};
+        dashCalls = (data.calls || []).map((c) => {
+            c.country = dashCountry(c.phone);
+            c.extName = dashExtNames[c.ext] || '';
+            return c;
+        });
+        if (data.truncated) {
+            statusEl.innerHTML = '<div class="dash-empty" style="color:#ff9f43">Showing the most recent ' + escHtml(String(data.legs_scanned || 0)) + ' CDR legs only — narrow the period for complete numbers.</div>';
+        } else if (!dashCalls.length) {
+            const scanned = data.legs_scanned != null ? (' (' + data.legs_scanned + ' CDR legs scanned') : '';
+            const src = data.cdr_source === 'miko_sqlite' ? ', Miko CDR database'
+                : (data.cdr_source === 'miko_rest' ? ', Miko REST API' : '');
+            statusEl.innerHTML = '<div class="dash-empty">No calls in the selected period' + escHtml(scanned + src) + ').</div>';
+        } else {
+            statusEl.innerHTML = '';
+        }
+        dashFillSelects();
+        dashApplyFilters();
+    } catch (e) {
+        statusEl.innerHTML = '<span class="error-msg">' + escHtml(e.message) + '</span>';
+    } finally {
+        dashLoading = false;
+    }
+}
+
+function dashFillSelects() {
+    const extSel = document.getElementById('dash-f-ext');
+    const keepExt = extSel.value;
+    const exts = [...new Set(dashCalls.map((c) => c.ext).filter(Boolean))].sort();
+    extSel.innerHTML = '<option value="">All users</option>' + exts.map((e) => {
+        const name = dashExtNames[e] ? e + ' — ' + dashExtNames[e] : e;
+        return '<option value="' + escAttr(e) + '">' + escHtml(name) + '</option>';
+    }).join('');
+    if (exts.includes(keepExt)) extSel.value = keepExt;
+
+    const cSel = document.getElementById('dash-f-country');
+    const keepC = cSel.value;
+    const countries = [...new Set(dashCalls.map((c) => c.country && c.country.label).filter(Boolean))].sort();
+    cSel.innerHTML = '<option value="">All countries</option>' + countries.map((c) =>
+        '<option value="' + escAttr(c) + '">' + escHtml(c) + '</option>').join('');
+    if (countries.includes(keepC)) cSel.value = keepC;
+}
+
+function dashFiltered() {
+    const ext = document.getElementById('dash-f-ext').value;
+    const dir = document.getElementById('dash-f-dir').value;
+    const dev = document.getElementById('dash-f-dev').value;
+    const country = document.getElementById('dash-f-country').value;
+    return dashCalls.filter((c) =>
+        (!ext || c.ext === ext) &&
+        (!dir || c.direction === dir) &&
+        (!dev || c.device === dev) &&
+        (!country || (c.country && c.country.label === country)));
+}
+
+function dashResetFilters() {
+    ['dash-f-ext', 'dash-f-dir', 'dash-f-dev', 'dash-f-country'].forEach((id) => { document.getElementById(id).value = ''; });
+    dashApplyFilters();
+}
+
+function dashApplyFilters() {
+    const calls = dashFiltered();
+    dashRenderTiles(calls);
+    dashRenderDaily(calls);
+    dashRenderUsers(calls);
+    dashRenderCountries(calls);
+    dashRenderDevices(calls);
+    dashRenderTalk(calls);
+    dashRenderTable(calls);
+}
+
+function dashRenderTiles(calls) {
+    const total = calls.length;
+    const answered = calls.filter((c) => c.answered).length;
+    const talk = calls.reduce((s, c) => s + (c.billsec || 0), 0);
+    const users = new Set(calls.map((c) => c.ext).filter(Boolean)).size;
+    const countries = new Set(calls.map((c) => c.country && c.country.label).filter(Boolean)).size;
+    const pct = total ? Math.round(answered * 100 / total) : 0;
+    const tile = (lbl, val, sub) =>
+        '<div class="stat-tile"><div class="lbl">' + lbl + '</div><div class="val">' + val + '</div>' +
+        (sub ? '<div class="sub">' + sub + '</div>' : '') + '</div>';
+    document.getElementById('dash-tiles').innerHTML =
+        tile('Total calls', total.toLocaleString(), '') +
+        tile('Answered', pct + '%', answered.toLocaleString() + ' of ' + total.toLocaleString()) +
+        tile('Talk time', dashFmtHours(talk), 'answered calls only') +
+        tile('Active users', users, '') +
+        tile('Countries', countries, 'external calls');
+}
+
+function dashRenderDaily(calls) {
+    const el = document.getElementById('dash-daily');
+    if (!calls.length) { el.innerHTML = '<div class="dash-empty">No calls in the selected period.</div>'; return; }
+    const byDay = {};
+    calls.forEach((c) => {
+        const d = (c.start || '').slice(0, 10);
+        if (!d) return;
+        (byDay[d] = byDay[d] || { total: 0, answered: 0 }).total++;
+        if (c.answered) byDay[d].answered++;
+    });
+    const days = Object.keys(byDay).sort();
+    // Fill gaps so quiet days show as gaps in activity, not missing columns.
+    const all = [];
+    if (days.length) {
+        const cur = new Date(days[0] + 'T00:00:00');
+        const last = new Date(days[days.length - 1] + 'T00:00:00');
+        while (cur <= last) {
+            all.push(dashLocalIso(cur).slice(0, 10));
+            cur.setDate(cur.getDate() + 1);
+        }
+    }
+    const max = Math.max(...all.map((d) => (byDay[d] || { total: 0 }).total), 1);
+    const showLabel = Math.max(1, Math.ceil(all.length / 14));
+    el.innerHTML =
+        '<div class="dcols">' + all.map((d) => {
+            const v = byDay[d] || { total: 0, answered: 0 };
+            const h = Math.round(v.total * 100 / max);
+            return '<div class="dcol" title="' + escAttr(d + ': ' + v.total + ' calls, ' + v.answered + ' answered') + '">' +
+                '<div class="bar" style="height:' + Math.max(v.total ? 2 : 0, h) + '%"></div></div>';
+        }).join('') + '</div>' +
+        '<div class="dax">' + all.map((d, i) =>
+            '<span>' + (i % showLabel === 0 ? d.slice(5) : '') + '</span>').join('') + '</div>';
+}
+
+/** Shared horizontal single-hue bar list. items: {key,label,value,valueHtml,title,selected} */
+function dashHBars(el, items, clickChart) {
+    if (!items.length) { el.innerHTML = '<div class="dash-empty">No data for the current filters.</div>'; return; }
+    const max = Math.max(...items.map((i) => i.value), 1);
+    el.innerHTML = items.map((i, idx) =>
+        '<div class="hbar-row' + (i.selected ? ' sel' : '') + '" title="' + escAttr(i.title || '') + '"' +
+        (clickChart ? ' onclick="dashBarClick(\'' + clickChart + '\',' + idx + ')"' : '') + '>' +
+        '<div class="hl">' + i.label + '</div>' +
+        '<div class="hbar-track"><div class="hbar-fill" style="width:' + Math.max(2, i.value * 100 / max) + '%"></div></div>' +
+        '<div class="hv">' + i.valueHtml + '</div></div>').join('');
+}
+
+function dashBarClick(chart, idx) {
+    const item = (dashChartData[chart] || [])[idx];
+    if (!item) return;
+    const sel = document.getElementById(item.filterId);
+    sel.value = (sel.value === item.filterValue) ? '' : item.filterValue;
+    dashApplyFilters();
+}
+
+function dashRenderUsers(calls) {
+    const byExt = {};
+    calls.forEach((c) => {
+        if (!c.ext) return;
+        const b = byExt[c.ext] = byExt[c.ext] || { calls: 0, answered: 0 };
+        b.calls++; if (c.answered) b.answered++;
+    });
+    const selected = document.getElementById('dash-f-ext').value;
+    const items = Object.entries(byExt)
+        .sort((a, b) => b[1].calls - a[1].calls).slice(0, 12)
+        .map(([ext, v]) => ({
+            label: escHtml(dashExtNames[ext] ? ext + ' · ' + dashExtNames[ext] : ext),
+            value: v.calls,
+            valueHtml: v.calls + ' <span class="pct">· ' + Math.round(v.answered * 100 / v.calls) + '%</span>',
+            title: ext + (dashExtNames[ext] ? ' ' + dashExtNames[ext] : '') + ': ' + v.calls + ' calls, ' + v.answered + ' answered',
+            selected: ext === selected,
+            filterId: 'dash-f-ext', filterValue: ext,
+        }));
+    dashChartData.users = items;
+    dashHBars(document.getElementById('dash-users'), items, 'users');
+}
+
+function dashRenderCountries(calls) {
+    const byC = {};
+    calls.forEach((c) => {
+        if (!c.country) return;
+        const b = byC[c.country.label] = byC[c.country.label] || { calls: 0, answered: 0, flag: c.country.flag };
+        b.calls++; if (c.answered) b.answered++;
+    });
+    const selected = document.getElementById('dash-f-country').value;
+    const items = Object.entries(byC)
+        .sort((a, b) => b[1].calls - a[1].calls).slice(0, 12)
+        .map(([label, v]) => ({
+            label: v.flag + ' ' + escHtml(label),
+            value: v.calls,
+            valueHtml: v.calls + ' <span class="pct">· ' + Math.round(v.answered * 100 / v.calls) + '%</span>',
+            title: label + ': ' + v.calls + ' calls, ' + v.answered + ' answered',
+            selected: label === selected,
+            filterId: 'dash-f-country', filterValue: label,
+        }));
+    dashChartData.countries = items;
+    dashHBars(document.getElementById('dash-countries'), items, 'countries');
+}
+
+function dashRenderDevices(calls) {
+    const byD = { web: 0, sip: 0, unknown: 0 };
+    calls.forEach((c) => { byD[c.device] = (byD[c.device] || 0) + 1; });
+    const total = calls.length || 1;
+    const selected = document.getElementById('dash-f-dev').value;
+    const items = Object.entries(byD).filter(([, v]) => v > 0)
+        .sort((a, b) => b[1] - a[1])
+        .map(([dev, v]) => ({
+            label: escHtml(DASH_DEVICE_LABELS[dev] || dev),
+            value: v,
+            valueHtml: v + ' <span class="pct">· ' + Math.round(v * 100 / total) + '%</span>',
+            title: (DASH_DEVICE_LABELS[dev] || dev) + ': ' + v + ' calls',
+            selected: dev === selected,
+            filterId: 'dash-f-dev', filterValue: dev,
+        }));
+    dashChartData.devices = items;
+    dashHBars(document.getElementById('dash-devices'), items, 'devices');
+}
+
+function dashRenderTalk(calls) {
+    const byExt = {};
+    calls.forEach((c) => {
+        if (!c.ext || !c.billsec) return;
+        byExt[c.ext] = (byExt[c.ext] || 0) + c.billsec;
+    });
+    const selected = document.getElementById('dash-f-ext').value;
+    const items = Object.entries(byExt)
+        .sort((a, b) => b[1] - a[1]).slice(0, 12)
+        .map(([ext, sec]) => ({
+            label: escHtml(dashExtNames[ext] ? ext + ' · ' + dashExtNames[ext] : ext),
+            value: sec,
+            valueHtml: dashFmtHours(sec),
+            title: ext + ': ' + dashFmtDur(sec) + ' of talk time',
+            selected: ext === selected,
+            filterId: 'dash-f-ext', filterValue: ext,
+        }));
+    dashChartData.talk = items;
+    dashHBars(document.getElementById('dash-talk'), items, 'talk');
+}
+
+function dashSortBy(key) {
+    if (dashSort.key === key) dashSort.dir = -dashSort.dir;
+    else dashSort = { key, dir: key === 'start' || key === 'billsec' ? -1 : 1 };
+    dashRenderTable(dashFiltered());
+}
+
+function dashSortValue(c, key) {
+    if (key === 'country') return c.country ? c.country.label : '';
+    if (key === 'answered') return c.answered ? 1 : 0;
+    return c[key] == null ? '' : c[key];
+}
+
+function dashRenderTable(calls) {
+    document.querySelectorAll('#dash-table .arr').forEach((el) => { el.textContent = ''; });
+    const arrEl = document.getElementById('arr-' + dashSort.key);
+    if (arrEl) arrEl.textContent = dashSort.dir > 0 ? '▲' : '▼';
+
+    const sorted = [...calls].sort((a, b) => {
+        const va = dashSortValue(a, dashSort.key), vb = dashSortValue(b, dashSort.key);
+        if (va < vb) return -dashSort.dir;
+        if (va > vb) return dashSort.dir;
+        return 0;
+    });
+    const cap = 500;
+    const rows = sorted.slice(0, cap);
+    document.getElementById('dash-tbody').innerHTML = rows.length ? rows.map((c) => {
+        const user = c.ext ? escHtml(c.ext) + (c.extName ? ' <span style="color:#6b7080">' + escHtml(c.extName) + '</span>' : '') : '—';
+        const country = c.country ? c.country.flag + ' ' + escHtml(c.country.label) : '<span style="color:#6b7080">—</span>';
+        const status = c.answered
+            ? '<span style="color:#4caf50">✓ Answered</span>'
+            : '<span style="color:#8b8fa3">✕ Missed</span>';
+        return '<tr>' +
+            '<td>' + escHtml((c.start || '').slice(0, 16)) + '</td>' +
+            '<td>' + user + '</td>' +
+            '<td>' + (DASH_DIR_LABELS[c.direction] || escHtml(c.direction)) + '</td>' +
+            '<td>' + escHtml(c.phone || '') + '</td>' +
+            '<td>' + country + '</td>' +
+            '<td>' + escHtml(DASH_DEVICE_LABELS[c.device] || c.device) + '</td>' +
+            '<td>' + status + '</td>' +
+            '<td style="font-variant-numeric:tabular-nums">' + (c.answered ? dashFmtDur(c.billsec) : '—') + '</td>' +
+            '</tr>';
+    }).join('') : '<tr><td colspan="8" class="dash-empty">No calls match the current filters.</td></tr>';
+    document.getElementById('dash-table-foot').textContent =
+        calls.length > cap ? 'Showing ' + cap + ' of ' + calls.length + ' calls — use Export CSV for the full list.'
+        : (calls.length ? 'Showing ' + calls.length + ' calls' : '');
+}
+
+function dashExportCsv() {
+    const calls = dashFiltered();
+    const esc = (v) => { v = String(v == null ? '' : v); return /[",\n;]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+    const lines = [['start', 'extension', 'user_name', 'direction', 'number', 'country', 'device', 'answered', 'talk_sec', 'duration_sec', 'trunk', 'linkedid'].join(',')];
+    calls.forEach((c) => {
+        lines.push([c.start, c.ext, c.extName, c.direction, c.phone,
+            c.country ? c.country.label : '', DASH_DEVICE_LABELS[c.device] || c.device,
+            c.answered ? 'yes' : 'no', c.billsec, c.duration, c.trunk, c.linkedid].map(esc).join(','));
+    });
+    const blob = new Blob(['﻿' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'calls-dashboard.csv';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 
 // ==================== Init ====================

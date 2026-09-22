@@ -48,7 +48,7 @@ def normalize_subdomain(subdomain: str) -> str:
 
 
 def normalize_domain_field(raw: str) -> str:
-    """Admin Domain field: short name or full host (``mdkb.amocrm.ru``, ``mdkb.kommo.com``)."""
+    """Admin Domain field: short name or full host (``yourcompany.amocrm.ru``, ``yourcompany.kommo.com``)."""
     s = (raw or "").strip().lower()
     if not s:
         return ""
@@ -721,6 +721,23 @@ def expires_at_from_seconds(expires_in: int | None) -> str | None:
     return (datetime.now(timezone.utc) + timedelta(seconds=int(expires_in))).isoformat()
 
 
+def _kommo_user_is_active(item: dict) -> bool:
+    """Kommo stores is_active under rights, not at the user root."""
+    rights = item.get("rights")
+    if isinstance(rights, dict) and "is_active" in rights:
+        return bool(rights.get("is_active"))
+    if "is_active" in item:
+        return bool(item.get("is_active"))
+    return True
+
+
+def _kommo_user_is_free(item: dict) -> bool:
+    rights = item.get("rights")
+    if isinstance(rights, dict) and "is_free" in rights:
+        return bool(rights.get("is_free"))
+    return False
+
+
 async def fetch_kommo_users(
     account_base: str,
     access: str,
@@ -728,13 +745,13 @@ async def fetch_kommo_users(
     timeout: float = 30.0,
     max_pages: int = 20,
 ) -> list[dict]:
-    """List active Kommo users for extension → user mapping in admin UI."""
+    """List Kommo account users (active flag from rights.is_active)."""
     token = sanitize_access_token(access or "")
     base = (account_base or "").strip().rstrip("/")
     if not token or not base:
         return []
 
-    users: list[dict] = []
+    by_id: dict[int, dict] = {}
     page = 1
     url = f"{base}/api/v4/users"
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=False, http2=False) as client:
@@ -762,18 +779,18 @@ async def fetch_kommo_users(
                 uid = item.get("id")
                 if uid is None:
                     continue
-                users.append(
-                    {
-                        "id": int(uid),
-                        "name": (item.get("name") or "").strip(),
-                        "email": (item.get("email") or "").strip(),
-                        "is_active": bool(item.get("is_active", True)),
-                    }
-                )
+                by_id[int(uid)] = {
+                    "id": int(uid),
+                    "name": (item.get("name") or "").strip(),
+                    "email": (item.get("email") or "").strip(),
+                    "is_active": _kommo_user_is_active(item),
+                    "is_free": _kommo_user_is_free(item),
+                }
 
             if len(batch) < 250:
                 break
             page += 1
 
+    users = list(by_id.values())
     users.sort(key=lambda u: ((u.get("name") or u.get("email") or str(u.get("id"))).lower()))
     return users

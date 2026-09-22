@@ -1,34 +1,38 @@
-# Copy to config.yaml on the server and edit — do not commit config.yaml with secrets.
-# --------------------------------
+# Callspire PBX Gateway — example configuration (no secrets).
+# Copy to /etc/callspire/config.yaml and adjust paths for your MikoPBX install.
 
 host: "0.0.0.0"
 port: 8443
 
-# JWT settings — use a long random string in production
-jwt_secret: "CHANGE_ME"
-# Session lifetime for desktop/web softphone tokens (days). 0 = never expire.
-# Also editable in Admin → Auth & sessions. Existing tokens keep their old exp until re-login.
+jwt_secret: "CHANGE_ME_GENERATE_WITH_openssl_rand_hex_32"
 jwt_expire_days: 30
-
 service_token: ""
-service_token_mode: "off"  # off | email_only | all
+service_token_mode: "off"
 
+mikopbx_docker_container: "mikopbx"
 cdr_db_path: "/var/spool/mikopbx/storage/usbdisk1/mikopbx/astlogs/asterisk/cdr.db"
-config_db_path: "/path/to/mikopbx/conf/mikopbx.db"
-recording_base: ""
-
+config_db_path: "/var/spool/mikopbx/cf/conf/mikopbx.db"
+# Root for Miko recordingfile paths (not docker volume when PBX uses /var/spool/mikopbx)
+recording_base: "/var/spool/mikopbx"
 cdr_docker_db_path: ""
 
+# Optional MikoPBX REST API v3 (recommended after initial PBX setup)
 use_rest_api: false
 mikopbx_rest_url: "http://127.0.0.1"
 mikopbx_api_key: ""
 mikopbx_admin_login: ""
 mikopbx_admin_password: ""
-mikopbx_verify_ssl: true
-mikopbx_rest_timeout_seconds: 15
+mikopbx_verify_ssl: false
 
-# Users — bcrypt hashes only; generate locally:
-#   python -c "import bcrypt; print(bcrypt.hashpw(b'yourpassword', bcrypt.gensalt()).decode())"
+# Kommo call upload under peak load (30+ simultaneous hangups)
+kommo_worker_count: 10
+kommo_max_recording_retries: 6
+kommo_queue_high_watermark: 15
+# Kommo call logs in admin + SQLite — auto-deleted after this many days (default 7).
+kommo_jobs_retention_days: 7
+
+# Default admin (password: admin) — change on first login via /admin
 users:
-  - username: "admin"
-    password_hash: "$2b$12$REPLACE_WITH_BCRYPT_HASH"
+  - username: admin
+    password_hash: "$2b$12$97B32J6d.VyfPR.oj3LRr.SZ9tJF62rR79buujoAmffdjctLShkQi"
+    must_change_password: true

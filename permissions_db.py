@@ -133,8 +133,10 @@ def init_db(db_path: str | None = None) -> None:
         );
     """)
     _migrate_kommo_schema(conn)
+    _migrate_websoftphone_turn_columns(conn)
     conn.commit()
     conn.close()
+    seed_softphone_turn_from_env_if_empty()
 
 
 def _migrate_kommo_schema(conn: sqlite3.Connection) -> None:
@@ -214,6 +216,40 @@ def _migrate_kommo_schema(conn: sqlite3.Connection) -> None:
         )
         """
     )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS kommo_entity_rules (
+            id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+            did                         TEXT NOT NULL DEFAULT '',
+            call_type                   TEXT NOT NULL,
+            entity_action               TEXT NOT NULL DEFAULT 'none',
+            pipeline_id                 INTEGER NULL,
+            status_id                   INTEGER NULL,
+            default_responsible_user_id INTEGER NULL,
+            contact_name_template       TEXT NOT NULL DEFAULT '',
+            lead_name_template          TEXT NOT NULL DEFAULT '',
+            create_task                 INTEGER NOT NULL DEFAULT 0,
+            task_name_template          TEXT NOT NULL DEFAULT '',
+            task_responsible            TEXT NOT NULL DEFAULT 'client_owner',
+            task_responsible_user_id    INTEGER NULL,
+            task_deadline_hours         INTEGER NOT NULL DEFAULT 1,
+            enabled                     INTEGER NOT NULL DEFAULT 1,
+            sort_order                  INTEGER NOT NULL DEFAULT 0,
+            updated_at                  TEXT NOT NULL DEFAULT ''
+        )
+        """
+    )
+
+    rule_cols = {
+        row[1] for row in conn.execute("PRAGMA table_info(kommo_entity_rules)").fetchall()
+    }
+    if "lead_tag_id" not in rule_cols:
+        conn.execute("ALTER TABLE kommo_entity_rules ADD COLUMN lead_tag_id INTEGER NULL")
+    if "lead_tag_name" not in rule_cols:
+        conn.execute(
+            "ALTER TABLE kommo_entity_rules ADD COLUMN lead_tag_name TEXT NOT NULL DEFAULT ''"
+        )
 
 
 def _ensure_kommo_schema() -> None:
@@ -393,6 +429,97 @@ def set_webrtc_public_config(ws_url: str, sip_host: str) -> None:
     )
     conn.commit()
     conn.close()
+
+
+def _migrate_websoftphone_turn_columns(conn: sqlite3.Connection) -> None:
+    """Add TURN columns to websoftphone_config (safe to run repeatedly)."""
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(websoftphone_config)").fetchall()}
+    if "turn_uri" not in cols:
+        conn.execute("ALTER TABLE websoftphone_config ADD COLUMN turn_uri TEXT NOT NULL DEFAULT ''")
+    if "turn_username" not in cols:
+        conn.execute("ALTER TABLE websoftphone_config ADD COLUMN turn_username TEXT NOT NULL DEFAULT ''")
+    if "turn_password" not in cols:
+        conn.execute("ALTER TABLE websoftphone_config ADD COLUMN turn_password TEXT NOT NULL DEFAULT ''")
+    if "softphone_updated_at" not in cols:
+        conn.execute(
+            "ALTER TABLE websoftphone_config ADD COLUMN softphone_updated_at TEXT NOT NULL DEFAULT ''"
+        )
+
+
+def get_softphone_app_settings() -> dict:
+    """Desktop app TURN defaults (Windows softphone pull sync)."""
+    conn = _conn()
+    try:
+        row = conn.execute(
+            "SELECT turn_uri, turn_username, turn_password, softphone_updated_at "
+            "FROM websoftphone_config WHERE id = 1"
+        ).fetchone()
+        if row is None:
+            return {
+                "turn_uri": "",
+                "turn_username": "",
+                "turn_password": "",
+                "config_revision": "",
+            }
+        revision = (row["softphone_updated_at"] or "").strip()
+        return {
+            "turn_uri": row["turn_uri"] or "",
+            "turn_username": row["turn_username"] or "",
+            "turn_password": row["turn_password"] or "",
+            "config_revision": revision,
+        }
+    finally:
+        conn.close()
+
+
+def set_softphone_app_settings(
+    *,
+    turn_uri: str,
+    turn_username: str,
+    turn_password: str | None = None,
+) -> dict:
+    """Persist desktop softphone TURN settings; returns updated snapshot."""
+    current = get_softphone_app_settings()
+    pwd = current.get("turn_password") or ""
+    if turn_password is not None:
+        pwd = turn_password
+    now = _now_iso()
+    conn = _conn()
+    try:
+        conn.execute(
+            "UPDATE websoftphone_config SET turn_uri = ?, turn_username = ?, "
+            "turn_password = ?, softphone_updated_at = ? WHERE id = 1",
+            (
+                (turn_uri or "").strip(),
+                (turn_username or "").strip(),
+                pwd,
+                now,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return get_softphone_app_settings()
+
+
+def seed_softphone_turn_from_env_if_empty() -> None:
+    """One-time import from WEBRTC_TURN_* env when DB has no TURN URI yet."""
+    current = get_softphone_app_settings()
+    if (current.get("turn_uri") or "").strip():
+        return
+    turn_urls = (os.environ.get("WEBRTC_TURN_URLS") or "").strip()
+    if not turn_urls:
+        return
+    first_url = next((u.strip() for u in turn_urls.split(",") if u.strip()), "")
+    if not first_url:
+        return
+    turn_user = (os.environ.get("WEBRTC_TURN_USERNAME") or "").strip()
+    turn_pass = (os.environ.get("WEBRTC_TURN_PASSWORD") or "").strip()
+    set_softphone_app_settings(
+        turn_uri=first_url,
+        turn_username=turn_user,
+        turn_password=turn_pass,
+    )
 
 
 # --------------- App users (email login) ---------------
@@ -1083,5 +1210,193 @@ def set_kommo_extension_user(
                 (ext, int(kommo_user_id), (kommo_user_name or "").strip(), now),
             )
         conn.commit()
+    finally:
+        conn.close()
+
+
+def refresh_kommo_extension_user_names(live_by_id: dict[int, dict]) -> int:
+    """Update stored display names for mappings whose Kommo user still exists. Never deletes rows."""
+    if not live_by_id:
+        return 0
+    mappings = list_kommo_extension_users()
+    updated = 0
+    for ext, mapping in mappings.items():
+        uid = mapping.get("kommo_user_id")
+        if uid is None:
+            continue
+        live = live_by_id.get(int(uid))
+        if not live:
+            continue
+        new_name = (live.get("name") or live.get("email") or "").strip()
+        old_name = (mapping.get("kommo_user_name") or "").strip()
+        if new_name and new_name != old_name:
+            set_kommo_extension_user(ext, int(uid), new_name)
+            updated += 1
+    return updated
+
+
+def _kommo_entity_rule_row_to_dict(row: sqlite3.Row) -> dict:
+    return {
+        "id": int(row["id"]),
+        "did": row["did"] or "",
+        "call_type": row["call_type"] or "",
+        "entity_action": row["entity_action"] or "none",
+        "pipeline_id": row["pipeline_id"],
+        "status_id": row["status_id"],
+        "default_responsible_user_id": row["default_responsible_user_id"],
+        "contact_name_template": row["contact_name_template"] or "",
+        "lead_name_template": row["lead_name_template"] or "",
+        "lead_tag_id": row["lead_tag_id"],
+        "lead_tag_name": row["lead_tag_name"] or "",
+        "create_task": bool(row["create_task"]),
+        "task_name_template": row["task_name_template"] or "",
+        "task_responsible": row["task_responsible"] or "client_owner",
+        "task_responsible_user_id": row["task_responsible_user_id"],
+        "task_deadline_hours": int(row["task_deadline_hours"] or 0),
+        "enabled": bool(row["enabled"]),
+        "sort_order": int(row["sort_order"] or 0),
+        "updated_at": row["updated_at"] or "",
+    }
+
+
+def list_kommo_entity_rules(*, include_disabled: bool = True) -> list[dict]:
+    _ensure_kommo_schema()
+    conn = _conn()
+    try:
+        q = "SELECT * FROM kommo_entity_rules"
+        if not include_disabled:
+            q += " WHERE enabled = 1"
+        q += " ORDER BY sort_order ASC, id ASC"
+        rows = conn.execute(q).fetchall()
+        return [_kommo_entity_rule_row_to_dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_kommo_entity_rule(rule_id: int) -> dict | None:
+    _ensure_kommo_schema()
+    conn = _conn()
+    try:
+        row = conn.execute(
+            "SELECT * FROM kommo_entity_rules WHERE id = ?", (int(rule_id),)
+        ).fetchone()
+        return _kommo_entity_rule_row_to_dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def upsert_kommo_entity_rule(rule: dict) -> dict:
+    _ensure_kommo_schema()
+    rule_id = rule.get("id")
+    now = _now_iso()
+    fields = {
+        "did": (rule.get("did") or "").strip(),
+        "call_type": (rule.get("call_type") or "").strip(),
+        "entity_action": (rule.get("entity_action") or "none").strip() or "none",
+        "pipeline_id": rule.get("pipeline_id"),
+        "status_id": rule.get("status_id"),
+        "default_responsible_user_id": rule.get("default_responsible_user_id"),
+        "contact_name_template": (rule.get("contact_name_template") or "").strip(),
+        "lead_name_template": (rule.get("lead_name_template") or "").strip(),
+        "lead_tag_id": rule.get("lead_tag_id"),
+        "lead_tag_name": (rule.get("lead_tag_name") or "").strip(),
+        "create_task": 1 if rule.get("create_task") else 0,
+        "task_name_template": (rule.get("task_name_template") or "").strip(),
+        "task_responsible": (rule.get("task_responsible") or "client_owner").strip()
+        or "client_owner",
+        "task_responsible_user_id": rule.get("task_responsible_user_id"),
+        "task_deadline_hours": max(0, int(rule.get("task_deadline_hours") or 0)),
+        "enabled": 1 if rule.get("enabled", True) else 0,
+        "sort_order": int(rule.get("sort_order") or 0),
+        "updated_at": now,
+    }
+    if not fields["call_type"]:
+        raise ValueError("call_type is required")
+    conn = _conn()
+    try:
+        if rule_id:
+            conn.execute(
+                """
+                UPDATE kommo_entity_rules SET
+                    did = ?, call_type = ?, entity_action = ?,
+                    pipeline_id = ?, status_id = ?, default_responsible_user_id = ?,
+                    contact_name_template = ?, lead_name_template = ?,
+                    lead_tag_id = ?, lead_tag_name = ?,
+                    create_task = ?, task_name_template = ?, task_responsible = ?,
+                    task_responsible_user_id = ?, task_deadline_hours = ?,
+                    enabled = ?, sort_order = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (
+                    fields["did"],
+                    fields["call_type"],
+                    fields["entity_action"],
+                    fields["pipeline_id"],
+                    fields["status_id"],
+                    fields["default_responsible_user_id"],
+                    fields["contact_name_template"],
+                    fields["lead_name_template"],
+                    fields["lead_tag_id"],
+                    fields["lead_tag_name"],
+                    fields["create_task"],
+                    fields["task_name_template"],
+                    fields["task_responsible"],
+                    fields["task_responsible_user_id"],
+                    fields["task_deadline_hours"],
+                    fields["enabled"],
+                    fields["sort_order"],
+                    fields["updated_at"],
+                    int(rule_id),
+                ),
+            )
+            saved_id = int(rule_id)
+        else:
+            cur = conn.execute(
+                """
+                INSERT INTO kommo_entity_rules (
+                    did, call_type, entity_action, pipeline_id, status_id,
+                    default_responsible_user_id, contact_name_template, lead_name_template,
+                    lead_tag_id, lead_tag_name,
+                    create_task, task_name_template, task_responsible, task_responsible_user_id,
+                    task_deadline_hours, enabled, sort_order, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    fields["did"],
+                    fields["call_type"],
+                    fields["entity_action"],
+                    fields["pipeline_id"],
+                    fields["status_id"],
+                    fields["default_responsible_user_id"],
+                    fields["contact_name_template"],
+                    fields["lead_name_template"],
+                    fields["lead_tag_id"],
+                    fields["lead_tag_name"],
+                    fields["create_task"],
+                    fields["task_name_template"],
+                    fields["task_responsible"],
+                    fields["task_responsible_user_id"],
+                    fields["task_deadline_hours"],
+                    fields["enabled"],
+                    fields["sort_order"],
+                    fields["updated_at"],
+                ),
+            )
+            saved_id = int(cur.lastrowid)
+        conn.commit()
+    finally:
+        conn.close()
+    saved = get_kommo_entity_rule(saved_id)
+    assert saved is not None
+    return saved
+
+
+def delete_kommo_entity_rule(rule_id: int) -> bool:
+    _ensure_kommo_schema()
+    conn = _conn()
+    try:
+        cur = conn.execute("DELETE FROM kommo_entity_rules WHERE id = ?", (int(rule_id),))
+        conn.commit()
+        return cur.rowcount > 0
     finally:
         conn.close()

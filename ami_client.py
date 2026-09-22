@@ -92,25 +92,26 @@ async def ami_originate(
         #
         # Additionally we set OUTGOING_CID (and __OUTGOING_CID) to make trunk
         # caller-id override explicit for other dialplan variants.
+        # Exten without '+' — Miko all_peers matches digits; inherited __CALLSPIRE_DST_E164
+        # preserves full +E.164 for outgoing-custom / trunk dial (Hong Kong +852, etc.).
+        exten = destination.lstrip("+") if destination.startswith("+") else destination
+        dst_e164 = destination if destination.startswith("+") else (
+            f"+{destination}" if destination.isdigit() and len(destination) >= 11 else destination
+        )
+
         originate_cmd = (
             f"Action: Originate\r\n"
             f"Channel: Local/{extension}@internal-originate\r\n"
             f"Context: all_peers\r\n"
-            f"Exten: {destination}\r\n"
+            f"Exten: {exten}\r\n"
             f"Priority: 1\r\n"
             f"Callerid: \"{callerid}\" <{callerid}>\r\n"
-            f"Variable: pt1c_dst={destination}\r\n"
+            f"Variable: pt1c_dst={dst_e164}\r\n"
             f"Variable: pt1c_cid={callerid}\r\n"
-            # Inheritable copies (prefix "__") so the chosen CID survives
-            # Local -> PJSIP/*-WS -> PJSIP/SIP-TRUNK-* channel transitions.
-            # MikoPBX by default keeps pt1c_cid non-inheritable and overrides
-            # OUTGOING_CID inside SIP-TRUNK-*-outgoing using per-group rules.
-            # Our extensions.conf hooks read __CALLSPIRE_CID to force the
-            # user-selected CID on the outgoing trunk leg.
-            f"Variable: __pt1c_cid={callerid}\r\n"
             f"Variable: OUTGOING_CID={callerid}\r\n"
             f"Variable: __OUTGOING_CID={callerid}\r\n"
             f"Variable: __CALLSPIRE_CID={callerid}\r\n"
+            f"Variable: __CALLSPIRE_DST_E164={dst_e164}\r\n"
             f"Variable: __SIPADDHEADER01=X-Callspire-Originate: {originate_id}\r\n"
             f"Async: true\r\n"
             f"ActionID: {originate_id}\r\n"

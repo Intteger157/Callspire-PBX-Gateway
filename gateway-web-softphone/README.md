@@ -48,7 +48,8 @@ install_web_softphone(app, static_dir="/opt/mikopbx-cdr-proxy/softphone-web")
 | `SESSION_SECURE` | `true` / `false` — флаг Secure у cookie (за HTTPS выставьте `true`). |
 | `SOFTPHONE_STATIC_DIR` | Каталог с `dist` SPA (по умолчанию `./softphone-web/dist` от cwd). |
 | `PBX_GATEWAY_SERVICE_TOKEN` | Опционально, заголовок `X-Callspire-Service-Token` на внутренние вызовы (как у BFF). |
-| `WEBRTC_SIP_WS_URL`, `WEBRTC_SIP_HOST`, `WEBRTC_TURN_*` | Fallback для `/api/webrtc/config`, если не задано в админке gateway. |
+| `WEBRTC_SIP_WS_URL`, `WEBRTC_SIP_HOST` | Fallback WSS/SIP host в `/api/webrtc/config`, если не задано в админке gateway. |
+| `WEBRTC_TURN_URLS`, `WEBRTC_TURN_USERNAME`, `WEBRTC_TURN_PASSWORD` | TURN/STUN для WebRTC: gateway отдаёт `iceServers` в `GET /api/v1/webrtc/config` (браузерный `/api/webrtc/config` проксирует как есть). |
 | `TRUST_PROXY` | Оставлено в конфиге для документации; для uvicorn за reverse-proxy используйте `--proxy-headers` или `ProxyHeadersMiddleware`. |
 | `WEB_SOFTPHONE_ENABLED` | `0` / `false` — не монтировать веб-софтфон. |
 | `WEB_SOFTPHONE_SKIP_ROOT_REDIRECT` | `1` — не регистрировать редирект `GET /` → `/softphone/` (если `/` уже занят). |

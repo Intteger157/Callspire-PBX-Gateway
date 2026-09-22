@@ -1,4 +1,4 @@
-"""Authentication module for Callspire PBX Gateway.
+"""Authentication module for MikoPBX CDR Proxy.
 
 Supports two authentication paths:
 1. Admin — username/bcrypt-hash from config.yaml ``users`` list.
@@ -25,7 +25,11 @@ def authenticate_user(username: str, password: str, users: list[dict]) -> dict |
     """Authenticate against the ``users`` list in config.yaml (bcrypt hashes)."""
     for u in users:
         if u["username"] == username and verify_password(password, u["password_hash"]):
-            return {**u, "role": "admin"}
+            return {
+                **u,
+                "role": "admin",
+                "must_change_password": bool(u.get("must_change_password")),
+            }
     return None
 
 

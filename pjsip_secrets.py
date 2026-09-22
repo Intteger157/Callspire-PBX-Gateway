@@ -55,7 +55,7 @@ def _read_pjsip_text(path: str, container: str, ttl_seconds: int) -> str:
     """Return raw contents of MikoPBX ``pjsip.conf`` (cached, best-effort).
 
     Empty string on any failure — failure reason is logged to stderr so it
-    surfaces in ``journalctl -u callspire-pbx-gateway`` (unit name may differ).
+    surfaces in ``journalctl -u mikopbx-cdr-proxy``.
     """
     if not path:
         _log("empty pjsip path — set mikopbx_pjsip_conf_path in config.yaml")
