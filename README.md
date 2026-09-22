@@ -1,82 +1,72 @@
 # Callspire PBX Gateway
 
-**Канонический каталог gateway** в монорепо `Softphone-crossplatform`.  
-Все правки gateway, Kommo, CDR и деплой-скрипты — **только здесь** (`callspire-pbx-gateway/`).
+**Canonical GitHub repo:** [Intteger157/Callspire-PBX-Gateway](https://github.com/Intteger157/Callspire-PBX-Gateway)
 
-На сервере: `/opt/callspire-pbx-gateway/` (или `/opt/mikopbx-cdr-proxy/` — тот же код).
+FastAPI service that runs **next to MikoPBX** on Linux: CDR lookup, AMI originate, admin panel, WebRTC settings, Kommo/AmoCRM integration, and (optionally) the browser web softphone at `/softphone/`.
 
-## Что лежит в каталоге
+Typical install path on a server: `/opt/callspire/pbx-gateway` (see the [stack installer](https://github.com/Intteger157/Callspire.Gateway-for-MikoPBX)). Legacy path: `/opt/callspire-pbx-gateway` or `/opt/mikopbx-cdr-proxy`.
+
+When developing inside the monorepo `Softphone-crossplatform`, this directory is a **gitignored sibling clone** — edit here, push to **Callspire-PBX-Gateway**, not deploy mirrors under `deploy/`.
+
+## Repository layout
 
 ```
 callspire-pbx-gateway/
-├── README.md                    ← вы здесь
+├── README.md
 ├── app.py, app_kommo.py         ← FastAPI gateway + Kommo API
 ├── cdr_client.py, config.py     ← Miko CDR / config
-├── kommo_crm.py                 ← Kommo API (заметки о звонках)
-├── kommo_recording.py           ← CDR-first: запись + disposition для Amo
-├── kommo_call_worker.py         ← фоновые job upload
-├── kommo_jobs_db.py, kommo_store.py
-├── kommo_oauth.py, kommo_service.py, permissions_db.py
-├── DEPLOY_CHECKLIST.ru.md       ← что копировать на prod
-├── copy-to-server.ps1           ← быстрый scp Kommo-файлов
-├── deploy_kommo.ps1             ← деплой Kommo на Vultr
-├── scripts/deploy-to-prod.sh    ← полный rsync gateway
-├── templates/                   ← admin UI
-├── gateway-web-softphone/       ← веб-софтфон (mount в app.py)
+├── kommo_crm.py, kommo_recording.py, kommo_call_worker.py
+├── kommo_jobs_db.py, kommo_store.py, kommo_oauth.py, kommo_service.py
+├── permissions_db.py
+├── config.example.yaml          ← copy to config.yaml (never commit config.yaml)
+├── .env.example                 ← optional env for SESSION_SECRET, SOFTPHONE_STATIC_DIR, …
+├── DEPLOY_CHECKLIST.ru.md
+├── scripts/deploy-to-prod.sh
+├── templates/                   ← admin UI (+ Kommo)
+├── gateway-web-softphone/       ← Python mount package (same-origin /softphone/)
 └── requirements.txt
 ```
 
-**Фронт (Vue/React и т.д.)** в этом репозитории не лежит: он в проекте **softphone-web** (репо `callspire-web-softphone` или соседняя папка). Собранный UI должен оказаться в каталоге **`dist`** (часто `softphone-web/dist`).
+The **Vue SPA sources** live in **[Callspire-web-softphone](https://github.com/Intteger157/Callspire-web-softphone)**. Build `softphone-web/dist/` and point `SOFTPHONE_STATIC_DIR` at it (or use the prebuilt `dist/` bundled in [Callspire.Gateway-for-MikoPBX](https://github.com/Intteger157/Callspire.Gateway-for-MikoPBX)).
 
-## Конфигурация (без секретов в git)
+## Configuration (no secrets in git)
 
-| Файл | Назначение |
-|------|------------|
-| **`config.example.yaml`** | Шаблон gateway: JWT, MikoPBX paths, Kommo workers, admin user. Скопируйте в `config.yaml` и подставьте свои пути. |
-| **`.env.example`** | Опциональные env для systemd/dev: `SESSION_SECRET`, `SOFTPHONE_STATIC_DIR`, WebRTC fallback. Скопируйте в `.env`. |
+| File | Purpose |
+|------|---------|
+| **`config.example.yaml`** | Gateway template: JWT, MikoPBX paths, Kommo workers, default admin (`admin` / `admin`). Copy to `config.yaml`. |
+| **`.env.example`** | Optional overrides: `SESSION_SECRET`, `SOFTPHONE_STATIC_DIR`, WebRTC fallbacks. Copy to `.env`. |
 
-**Не коммитить:** `config.yaml`, `.env`, `*.sqlite`, `permissions.db` — только локальные/runtime данные.
+**Do not commit:** `config.yaml`, `.env`, `*.sqlite`, `permissions.db` — runtime data only.
 
-## Шаги на сервере / в dev
+## Quick start (dev)
 
-### 1) Собрать веб-UI
+### 1) Build web UI (optional)
 
 ```bash
-cd /path/to/softphone-web
-npm ci
-npm run build
+git clone https://github.com/Intteger157/Callspire-web-softphone.git
+cd callspire-web-softphone/softphone-web
+npm ci && npm run build
+# → dist/
 ```
 
-Получится каталог `dist` с `index.html` и `assets/`.
-
-### 2) Установить пакет в venv gateway
-
-Из **корня репозитория**, где лежит `app.py` (если вы скопировали туда эту папку):
+### 2) Python venv + gateway
 
 ```bash
-cd /opt/callspire-pbx-gateway   # пример
-source .venv/bin/activate
+cd callspire-pbx-gateway
+cp config.example.yaml config.yaml   # edit paths / jwt_secret
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
 pip install -e ./gateway-web-softphone
-pip install -r requirements-web-softphone.txt   # если ещё не стоят зависимости gateway
+export SESSION_SECRET="$(openssl rand -hex 32)"
+export SOFTPHONE_STATIC_DIR="/path/to/callspire-web-softphone/softphone-web/dist"
+uvicorn app:app --host 0.0.0.0 --port 8443
 ```
 
-Если `gateway-web-softphone` лежит рядом с `app.py`, путь `./gateway-web-softphone` верный.
+Open **`http://127.0.0.1:8443/admin`** (default **admin / admin** — change on first login) and **`http://127.0.0.1:8443/softphone/`** when static dir is set.
 
-### 3) Переменные окружения
+### 3) Mount web softphone in `app.py`
 
-Минимум:
-
-```bash
-export SESSION_SECRET='длинная-случайная-строка'
-export SOFTPHONE_STATIC_DIR='/path/to/softphone-web/dist'
-export SESSION_SECURE=true    # за HTTPS
-```
-
-Полный список: `gateway-web-softphone/README.md`.
-
-### 4) Подключить в `app.py`
-
-В **самый конец** файла (после всех `include_router`):
+At the **end** of `app.py` (after all routers):
 
 ```python
 from gateway_web_softphone import install_web_softphone
@@ -84,71 +74,53 @@ from gateway_web_softphone import install_web_softphone
 install_web_softphone(app)
 ```
 
-Если каталог с UI не задаётся через `SOFTPHONE_STATIC_DIR`, можно явно:
+Details: `gateway-web-softphone/README.md`, `INTEGRATION_APP_EXAMPLE.py`.
 
-```python
-install_web_softphone(app, static_dir="/opt/mikopbx-cdr-proxy/softphone-web")
-```
-
-Подсказки по env: см. **`INTEGRATION_APP_EXAMPLE.py`** (в той же папке).
-
-### 5) Один процесс вместо BFF
-
-- **Раньше:** nginx → Node `softphone-bff` + отдельно uvicorn gateway.  
-- **Теперь:** nginx → **только** uvicorn с gateway; веб открывается по `https://домен/softphone/`.
+Production uses **one uvicorn process** (gateway + `/softphone/` + `/api/*`). The legacy Node **softphone-bff** is removed — do not deploy it for new installs.
 
 ## Kommo CRM integration
 
-Admin UI: **Settings → Kommo CRM**. One OAuth authorization for all Callspire clients.
+Admin UI: **Settings → Kommo CRM**. One OAuth authorization for all Callspire clients (desktop + web).
 
-### Redirect URI
-
-Register this URL in Kommo → your integration → **Redirect URI** (must match exactly):
+**Redirect URI** in Kommo (must match exactly):
 
 ```
 https://<your-gateway-host>/<base-path>/oauth/kommo/callback
 ```
 
-Example: `https://pbx.example.com/tool/oauth/kommo/callback`
+**Per-user exclusions:** PBX Users → **Gateway Kommo** → uncheck **Use shared** so an extension skips the company Kommo session (desktop can still use local Kommo).
 
-The gateway auto-detects the URL from its public address. Use **Reset redirect URI** in admin if unsure, then paste the same value into Kommo.
+Kommo upload pipeline:
 
-### Domain
+| File | Role |
+|------|------|
+| `kommo_recording.py` | CDR match, disposition, recording fetch |
+| `kommo_call_worker.py` | Background job worker |
+| `kommo_crm.py` | Notes / attachments in Kommo |
+| `kommo_jobs_db.py` | Job queue + admin log |
 
-In admin, **Domain** accepts a full host or short name:
+See **`DEPLOY_CHECKLIST.ru.md`**, **`README_KOMMO.md`**.
 
-- `yourcompany.amocrm.ru` (RU accounts)
-- `yourcompany.kommo.com` (global Kommo)
-- `yourcompany` (short name → defaults to `.amocrm.ru`)
-
-Filled automatically after **Authorize with Kommo**.
-
-### Per-user exclusions
-
-**PBX Users** → column **Gateway Kommo** → uncheck **Use shared** to exclude an extension from the company Kommo session (they can still use local Kommo in the desktop app).
-
-### Deploy (Kommo + CDR)
+## Deploy to existing server
 
 ```powershell
-cd callspire-pbx-gateway
-.\copy-to-server.ps1 -Server root@vultr -GatewayPath /opt/callspire-pbx-gateway
-# или полный деплой:
-# ./scripts/deploy-to-prod.sh root@vultr /opt/callspire-pbx-gateway
+.\copy-to-server.ps1 -Server root@your-host -GatewayPath /opt/callspire/pbx-gateway
 ```
 
-Kommo upload pipeline (CDR → заметка в лид без записи):
+```bash
+./scripts/deploy-to-prod.sh root@your-host /opt/callspire/pbx-gateway
+```
 
-| Файл | Назначение |
-|------|------------|
-| `kommo_recording.py` | `resolve_pbx_call()` — CDR disposition, billsec, запись |
-| `kommo_call_worker.py` | job worker, CDR-first без 8-мин ожидания |
-| `kommo_crm.py` | `process_call()` → заметка в Kommo |
-| `kommo_jobs_db.py` | очередь jobs |
+Or use the full stack installer: **[Callspire.Gateway-for-MikoPBX](https://github.com/Intteger157/Callspire.Gateway-for-MikoPBX)**.
 
-См. **`DEPLOY_CHECKLIST.ru.md`**.
+## Related repositories
+
+| Repository | Role |
+|---|---|
+| **[Callspire.Gateway-for-MikoPBX](https://github.com/Intteger157/Callspire.Gateway-for-MikoPBX)** | One-command Linux installer (bundles gateway + prebuilt web `dist/`) |
+| **[Callspire-web-softphone](https://github.com/Intteger157/Callspire-web-softphone)** | Vue SPA sources |
+| **[Callspire-softphone](https://github.com/Intteger157/Callspire-softphone)** | Windows + macOS desktop clients |
 
 ---
 
-## Не править копии в `deploy/web-softphone/gateway-patch/`
-
-Устаревшие зеркала в монорепо — источник правды **только этот каталог**.
+Do **not** treat `deploy/web-softphone/gateway-patch/` in the monorepo as source of truth — edit **this repo** only.
