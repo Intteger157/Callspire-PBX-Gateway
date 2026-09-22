@@ -28,6 +28,15 @@ callspire-pbx-gateway/
 
 **Фронт (Vue/React и т.д.)** в этом репозитории не лежит: он в проекте **softphone-web** (репо `callspire-web-softphone` или соседняя папка). Собранный UI должен оказаться в каталоге **`dist`** (часто `softphone-web/dist`).
 
+## Конфигурация (без секретов в git)
+
+| Файл | Назначение |
+|------|------------|
+| **`config.example.yaml`** | Шаблон gateway: JWT, MikoPBX paths, Kommo workers, admin user. Скопируйте в `config.yaml` и подставьте свои пути. |
+| **`.env.example`** | Опциональные env для systemd/dev: `SESSION_SECRET`, `SOFTPHONE_STATIC_DIR`, WebRTC fallback. Скопируйте в `.env`. |
+
+**Не коммитить:** `config.yaml`, `.env`, `*.sqlite`, `permissions.db` — только локальные/runtime данные.
+
 ## Шаги на сервере / в dev
 
 ### 1) Собрать веб-UI

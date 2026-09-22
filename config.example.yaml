@@ -1,5 +1,9 @@
-# Callspire PBX Gateway — example configuration (no secrets).
-# Copy to /etc/callspire/config.yaml and adjust paths for your MikoPBX install.
+# Callspire PBX Gateway — example configuration (no production secrets).
+# Copy to config.yaml in the gateway root or /etc/callspire/config.yaml
+# and adjust paths for your MikoPBX install.
+#
+# Generate jwt_secret:  openssl rand -hex 32
+# Default admin password below is "admin" — change on first login via /admin
 
 host: "0.0.0.0"
 port: 8443
@@ -7,31 +11,49 @@ port: 8443
 jwt_secret: "CHANGE_ME_GENERATE_WITH_openssl_rand_hex_32"
 jwt_expire_days: 30
 service_token: ""
-service_token_mode: "off"
+service_token_mode: "off"  # off | email_only | all
 
+# MikoPBX paths (host filesystem)
 mikopbx_docker_container: "mikopbx"
 cdr_db_path: "/var/spool/mikopbx/storage/usbdisk1/mikopbx/astlogs/asterisk/cdr.db"
 config_db_path: "/var/spool/mikopbx/cf/conf/mikopbx.db"
-# Root for Miko recordingfile paths (not docker volume when PBX uses /var/spool/mikopbx)
-recording_base: "/var/spool/mikopbx"
+# Host prefix for recordingfile paths from CDR (often .../storage, not /var/spool/mikopbx alone)
+recording_base: "/var/spool/mikopbx/storage"
 cdr_docker_db_path: ""
 
-# Optional MikoPBX REST API v3 (recommended after initial PBX setup)
+mikopbx_pjsip_conf_path: "/etc/asterisk/pjsip.conf"
+mikopbx_pjsip_cache_seconds: 60
+
+# Optional MikoPBX REST API v3
 use_rest_api: false
 mikopbx_rest_url: "http://127.0.0.1"
 mikopbx_api_key: ""
 mikopbx_admin_login: ""
 mikopbx_admin_password: ""
 mikopbx_verify_ssl: false
+mikopbx_rest_timeout_seconds: 15
 
-# Kommo call upload under peak load (30+ simultaneous hangups)
+# PBX stores CDR timestamps as local wall clock; set hours east of UTC (3 = Moscow)
+pbx_utc_offset_hours: 0
+
+# Public URL embedded in callspire://provision links (empty = use admin Host header)
+public_url: ""
+
+ssl_certfile: null
+ssl_keyfile: null
+
+# Kommo call upload under peak load
 kommo_worker_count: 10
 kommo_max_recording_retries: 6
 kommo_queue_high_watermark: 15
-# Kommo call logs in admin + SQLite — auto-deleted after this many days (default 7).
 kommo_jobs_retention_days: 7
 
-# Default admin (password: admin) — change on first login via /admin
+# Poll Miko CDR for unanswered inbound and apply Kommo entity rules
+kommo_cdr_entity_enabled: true
+kommo_cdr_entity_poll_seconds: 30
+kommo_cdr_entity_min_call_age_seconds: 60
+kommo_cdr_entity_lookback_minutes: 180
+
 users:
   - username: admin
     password_hash: "$2b$12$97B32J6d.VyfPR.oj3LRr.SZ9tJF62rR79buujoAmffdjctLShkQi"

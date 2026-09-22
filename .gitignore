@@ -1,6 +1,10 @@
 # Never commit production secrets (copy from config.example.yaml)
 config.yaml
 
+.env
+.env.*
+!.env.example
+
 __pycache__/
 *.py[cod]
 .venv/
