@@ -3757,7 +3757,18 @@ function kommoLogUploadStatusCell(item) {
 
 function kommoLogActionCell(item) {
     const jobId = item.job_id || item.id;
-    if (!jobId || item.source === 'pbx_cdr' && !item.job_id) return '';
+    if (item.source === 'pbx_cdr' && !item.job_id) {
+        if (item.can_apply_entities && item.linkedid) {
+            const lid = escAttr(item.linkedid);
+            if (kommoLogsRetrying['ent-' + item.linkedid]) {
+                return '<span style="color:#8b8fa3;font-size:12px">Applying…</span>';
+            }
+            const title = 'Run Kommo entity rules (contact/deal/task) for this missed inbound call';
+            return '<div class="kommo-log-actions"><button type="button" class="btn btn-sm btn-outline" title="' + escAttr(title) + '" onclick="applyKommoInboundEntities(\'' + lid + '\')">Apply rules</button></div>';
+        }
+        return '';
+    }
+    if (!jobId) return '';
     const id = escAttr(jobId);
     if (kommoLogsRetrying[jobId]) {
         return '<span style="color:#8b8fa3;font-size:12px">Sending…</span>';
@@ -3882,6 +3893,46 @@ async function loadKommoLogs(silent) {
     } catch (e) {
         tbody.innerHTML = '<tr><td colspan="11" style="color:#ff8a8a;padding:20px">' + escHtml(e.message) + '</td></tr>';
         if (statusEl) statusEl.innerHTML = '<span class="error-msg">' + escHtml(e.message) + '</span>';
+    }
+}
+
+async function applyKommoInboundEntities(linkedid) {
+    const statusEl = document.getElementById('kommo-logs-status');
+    const key = 'ent-' + linkedid;
+    if (!linkedid || kommoLogsRetrying[key]) return;
+    const hours = parseInt(document.getElementById('kommo-logs-hours')?.value || '72', 10) || 72;
+    kommoLogsRetrying[key] = true;
+    await loadKommoLogs(true);
+    try {
+        const data = await api('POST', '/api/admin/kommo/inbound-call-log/' + encodeURIComponent(linkedid) + '/apply-entities', {
+            hours: hours,
+            force: false,
+        });
+        if (data.ok) {
+            if (statusEl) statusEl.innerHTML = '<span style="color:#6dd4a0">Entity rules applied.</span>';
+        } else {
+            const reason = data.reason || 'failed';
+            const retryForce = reason === 'already_processed' || reason === 'no_matching_rule_cached';
+            if (retryForce && confirm('Retry and clear the previous “processed” marker for this call?')) {
+                const data2 = await api('POST', '/api/admin/kommo/inbound-call-log/' + encodeURIComponent(linkedid) + '/apply-entities', {
+                    hours: hours,
+                    force: true,
+                });
+                if (data2.ok) {
+                    if (statusEl) statusEl.innerHTML = '<span style="color:#6dd4a0">Entity rules applied (forced).</span>';
+                } else if (statusEl) {
+                    statusEl.innerHTML = '<span class="error-msg">' + escHtml(data2.reason || 'Apply failed') + '</span>';
+                }
+            } else if (statusEl) {
+                statusEl.innerHTML = '<span class="error-msg">' + escHtml(reason) + '</span>';
+            }
+        }
+        await loadKommoLogs(true);
+    } catch (e) {
+        if (statusEl) statusEl.innerHTML = '<span class="error-msg">' + escHtml(e.message) + '</span>';
+    } finally {
+        delete kommoLogsRetrying[key];
+        await loadKommoLogs(true);
     }
 }
 

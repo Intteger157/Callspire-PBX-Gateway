@@ -1188,6 +1188,20 @@ def is_cdr_entity_processed(linkedid: str) -> bool:
     return row is not None
 
 
+def clear_cdr_entity_processed(linkedid: str) -> bool:
+    """Remove processed marker so entity rules can run again (manual retry)."""
+    lid = (linkedid or "").strip()
+    if not lid:
+        return False
+    with _connect() as conn:
+        cur = conn.execute(
+            "DELETE FROM kommo_cdr_entity_processed WHERE linkedid = ?",
+            (lid,),
+        )
+        conn.commit()
+    return cur.rowcount > 0
+
+
 def mark_cdr_entity_processed(
     linkedid: str,
     *,

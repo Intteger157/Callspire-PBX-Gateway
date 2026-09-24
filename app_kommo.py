@@ -62,6 +62,11 @@ class ProcessCallBody(BaseModel):
     did: Optional[str] = None
 
 
+class ApplyInboundEntitiesBody(BaseModel):
+    force: bool = False
+    hours: int = Field(72, ge=1, le=168)
+
+
 class RetryProcessCallBody(BaseModel):
     phone: str
     call_time: str
@@ -439,6 +444,11 @@ def _inbound_call_to_admin_api(
 
     ext = (call.get("ext") or "").strip() or (job_api or {}).get("extension") or ""
 
+    has_entity_outcome = bool(
+        lead_id or contact_id or (task_created and task_id)
+    )
+    can_apply_entities = not was_answered and not has_entity_outcome
+
     return {
         "id": call.get("linkedid") or "",
         "linkedid": call.get("linkedid") or "",
@@ -466,6 +476,8 @@ def _inbound_call_to_admin_api(
         "note_only": (job_api or {}).get("note_only"),
         "can_retry": bool((job_api or {}).get("can_retry")),
         "can_reupload": bool(job),
+        "can_apply_entities": can_apply_entities,
+        "entity_rule_id": entity.get("rule_id"),
         "reason": (job_api or {}).get("reason"),
         "source": "pbx_cdr",
     }
@@ -893,6 +905,25 @@ def register_kommo_routes(
             "offset": offset,
             "kommo_account_url": kommo_base,
         }
+
+    @router.post("/api/admin/kommo/inbound-call-log/{linkedid}/apply-entities")
+    async def admin_apply_inbound_entities(
+        linkedid: str,
+        body: ApplyInboundEntitiesBody,
+        _admin: dict = Depends(require_admin),
+    ):
+        lid = (linkedid or "").strip()
+        if not lid:
+            raise HTTPException(400, "linkedid is required")
+        result = await kommo_cdr_entity_worker.apply_missed_inbound_entities_manual(
+            lid,
+            hours=body.hours,
+            force=body.force,
+        )
+        reason = (result.get("reason") or "").strip()
+        if reason == "call_not_found_or_not_missed_inbound":
+            raise HTTPException(404, reason)
+        return result
 
     @router.post("/api/admin/kommo/call-jobs/{job_id}/retry")
     async def admin_kommo_call_job_retry(

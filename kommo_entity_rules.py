@@ -108,6 +108,22 @@ def render_template(
     return text.strip()
 
 
+def entity_rule_outcomes_ok(
+    rule: dict[str, Any],
+    result: EntityRuleResult,
+    *,
+    contact_known_before: bool,
+) -> bool:
+    """True when every action enabled on the rule actually succeeded."""
+    if rule.get("create_task") and not result.task_created:
+        return False
+    action = (rule.get("entity_action") or "none").strip()
+    if action == "create_contact_and_lead" and not contact_known_before:
+        if not (result.lead_id or result.contact_id):
+            return False
+    return True
+
+
 def find_matching_rule(
     rules: list[dict[str, Any]],
     call_type: str,
@@ -162,7 +178,8 @@ async def apply_entity_rule(
         return result
 
     contact_id = await client.find_contact_by_phone(phone)
-    contact_known = contact_id is not None
+    contact_known_before = contact_id is not None
+    contact_known = contact_known_before
     call_type = classify_call_type(
         is_incoming=is_incoming,
         was_answered=was_answered,
@@ -284,16 +301,27 @@ async def apply_entity_rule(
             )
 
     if lid and result.rule_id:
-        _mark_cdr_entity_processed(
-            lid,
-            phone=phone,
-            source=entity_source,
-            rule_id=result.rule_id,
-            task_created=result.task_created,
-            task_id=result.task_id,
-            contact_id=result.contact_id,
-            lead_id=result.lead_id,
-        )
+        if entity_rule_outcomes_ok(
+            rule, result, contact_known_before=contact_known_before
+        ):
+            _mark_cdr_entity_processed(
+                lid,
+                phone=phone,
+                source=entity_source,
+                rule_id=result.rule_id,
+                task_created=result.task_created,
+                task_id=result.task_id,
+                contact_id=result.contact_id,
+                lead_id=result.lead_id,
+            )
+        else:
+            msg = (
+                f"[kommo_entity_rules] rule id={result.rule_id} linkedid={lid}: "
+                f"not marking processed — required outcomes missing "
+                f"(task={result.task_created} lead={result.lead_id} contact={result.contact_id})"
+            )
+            log.warning(msg)
+            print(msg, flush=True)
 
     return result
 

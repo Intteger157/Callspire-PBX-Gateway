@@ -330,6 +330,36 @@ def _extract_missed_inbound_calls(
     return missed
 
 
+def collect_missed_inbound_for_worker(
+    rows: list[dict[str, Any]], known_exts: set[str]
+) -> list[dict[str, Any]]:
+    """Missed inbound calls for the entity worker (same set admin shows as missed inbound)."""
+    by_lid: dict[str, dict[str, Any]] = {}
+    for c in _extract_missed_inbound_calls(rows, known_exts):
+        lid = (c.get("linkedid") or "").strip()
+        if lid:
+            by_lid[lid] = c
+    for c in aggregate_cdr_calls(rows, known_exts):
+        if (c.get("direction") or "").strip() != "incoming":
+            continue
+        if c.get("answered"):
+            continue
+        lid = (c.get("linkedid") or "").strip()
+        if not lid or lid in by_lid:
+            continue
+        phone = (c.get("phone") or "").strip()
+        if _digit_len(phone) < 6:
+            continue
+        by_lid[lid] = {
+            "linkedid": lid,
+            "start": c.get("start") or "",
+            "phone": phone,
+            "did": "",
+            "ext": (c.get("ext") or "").removesuffix("-WS"),
+        }
+    return list(by_lid.values())
+
+
 def extract_inbound_cdr_calls(
     rows: list[dict[str, Any]], known_exts: set[str]
 ) -> list[dict[str, Any]]:
@@ -364,6 +394,33 @@ def extract_inbound_cdr_calls(
             "duration": 0,
         }
     return sorted(by_lid.values(), key=lambda x: x.get("start") or "", reverse=True)
+
+
+async def _query_cdr_rows_hours(hours: int) -> list[dict[str, Any]]:
+    offset = _pbx_offset_hours()
+    now_utc = datetime.now(timezone.utc)
+    end_local = (now_utc + timedelta(hours=offset)).replace(tzinfo=None)
+    start_local = end_local - timedelta(hours=max(1, min(168, hours)))
+    fmt = "%Y-%m-%d %H:%M:%S"
+    start_from = start_local.strftime(fmt)
+    start_to = end_local.strftime(fmt)
+    if _query_cdr_fn:
+        return await _query_cdr_fn(
+            start_from=start_from,
+            start_to=start_to,
+            limit=CDR_SCAN_LIMIT,
+            offset=0,
+        )
+    return query_cdr(
+        cdr_db_path=_cfg.get("cdr_db_path") or "",
+        config_db_path=_cfg.get("config_db_path") or "",
+        start_from=start_from,
+        start_to=start_to,
+        limit=CDR_SCAN_LIMIT,
+        offset=0,
+        docker_container=_cfg.get("mikopbx_docker_container"),
+        docker_db_path=_cfg.get("cdr_docker_db_path"),
+    )
 
 
 async def _query_recent_cdr_rows() -> list[dict[str, Any]]:
@@ -418,26 +475,47 @@ async def _client_for_extension(extension: str) -> Optional[KommoCrmClient]:
     )
 
 
-async def _process_missed_incoming(call: dict[str, Any]) -> None:
+async def _process_missed_incoming(
+    call: dict[str, Any],
+    *,
+    ignore_worker_start: bool = False,
+    ignore_min_age: bool = False,
+    force: bool = False,
+    entity_source: str = "cdr_worker",
+) -> dict[str, Any]:
     linkedid = (call.get("linkedid") or "").strip()
     phone = _normalize_phone(call.get("phone") or "")
     if not linkedid or not phone:
-        return
-    if _is_cdr_entity_processed(linkedid):
-        return
-    if linkedid in _no_rule_linkedids:
-        return
+        return {"ok": False, "linkedid": linkedid, "reason": "missing linkedid or phone"}
+
+    if force:
+        clear_fn = getattr(kommo_jobs_db, "clear_cdr_entity_processed", None)
+        if callable(clear_fn):
+            clear_fn(linkedid)
+        _no_rule_linkedids.discard(linkedid)
+    elif _is_cdr_entity_processed(linkedid):
+        return {"ok": False, "linkedid": linkedid, "reason": "already_processed"}
+    elif linkedid in _no_rule_linkedids:
+        return {"ok": False, "linkedid": linkedid, "reason": "no_matching_rule_cached"}
 
     call_start_utc = _call_start_utc(call)
     if not call_start_utc:
-        return
+        return {"ok": False, "linkedid": linkedid, "reason": "missing call start time"}
 
-    if _worker_started_at_utc and call_start_utc < _worker_started_at_utc:
-        return
+    if (
+        not ignore_worker_start
+        and _worker_started_at_utc
+        and call_start_utc < _worker_started_at_utc
+    ):
+        return {"ok": False, "linkedid": linkedid, "reason": "before_worker_start"}
 
     age_sec = (datetime.now(timezone.utc) - call_start_utc).total_seconds()
-    if age_sec < MIN_CALL_AGE_SECONDS:
-        return
+    if not ignore_min_age and age_sec < MIN_CALL_AGE_SECONDS:
+        return {
+            "ok": False,
+            "linkedid": linkedid,
+            "reason": f"call too recent ({int(age_sec)}s)",
+        }
 
     if _cdr_call_has_active_kommo_job(
         linkedid=linkedid,
@@ -449,10 +527,10 @@ async def _process_missed_incoming(call: dict[str, Any]) -> None:
             f"process-call job already active",
             flush=True,
         )
-        return
+        return {"ok": False, "linkedid": linkedid, "reason": "active_process_call_job"}
 
     if not list_rules():
-        return
+        return {"ok": False, "linkedid": linkedid, "reason": "no_entity_rules_configured"}
 
     extension = (call.get("ext") or "").strip().removesuffix("-WS")
     client = await _client_for_extension(extension)
@@ -462,12 +540,12 @@ async def _process_missed_incoming(call: dict[str, Any]) -> None:
             f"no Kommo session (ext={extension or '-'})",
             flush=True,
         )
-        return
+        return {"ok": False, "linkedid": linkedid, "reason": "no_kommo_session"}
 
     try:
         print(
             f"[kommo_cdr_entity_worker] missed inbound linkedid={linkedid} "
-            f"phone={phone} ext={extension or '-'} age={int(age_sec)}s",
+            f"phone={phone} ext={extension or '-'} age={int(age_sec)}s source={entity_source}",
             flush=True,
         )
         entity_ctx = await apply_entity_rule(
@@ -480,7 +558,7 @@ async def _process_missed_incoming(call: dict[str, Any]) -> None:
             call_from_label=phone,
             acting_user_id=client.get_acting_user_id(),
             linkedid=linkedid,
-            entity_source="cdr_worker",
+            entity_source=entity_source,
         )
         print(
             f"[kommo_cdr_entity_worker] done linkedid={linkedid} "
@@ -490,8 +568,65 @@ async def _process_missed_incoming(call: dict[str, Any]) -> None:
         )
         if not entity_ctx.rule_id:
             _no_rule_linkedids.add(linkedid)
+            return {"ok": False, "linkedid": linkedid, "reason": "no_matching_rule"}
+
+        has_outcome = bool(
+            entity_ctx.lead_id
+            or entity_ctx.contact_id
+            or (entity_ctx.task_created and entity_ctx.task_id)
+        )
+        return {
+            "ok": has_outcome,
+            "linkedid": linkedid,
+            "reason": "" if has_outcome else "rule_matched_no_outcome",
+            "rule_id": entity_ctx.rule_id,
+            "call_type": entity_ctx.call_type,
+            "task_created": entity_ctx.task_created,
+            "task_id": entity_ctx.task_id,
+            "contact_id": entity_ctx.contact_id,
+            "lead_id": entity_ctx.lead_id,
+        }
     finally:
         await client.close()
+
+
+async def apply_missed_inbound_entities_manual(
+    linkedid: str,
+    *,
+    hours: int = 168,
+    force: bool = False,
+) -> dict[str, Any]:
+    """Admin manual push: apply entity rules for one inbound linkedid (any call age)."""
+    lid = (linkedid or "").strip()
+    if not lid:
+        return {"ok": False, "reason": "missing linkedid"}
+    if not list_rules():
+        return {"ok": False, "linkedid": lid, "reason": "no_entity_rules_configured"}
+    if not _enabled():
+        return {"ok": False, "linkedid": lid, "reason": "kommo_not_configured"}
+    try:
+        rows = await _query_cdr_rows_hours(hours)
+    except Exception as exc:
+        log.exception("CDR query failed for manual entity apply: %s", exc)
+        return {"ok": False, "linkedid": lid, "reason": f"cdr_query_failed: {exc}"}
+
+    known_exts = _known_extensions()
+    missed = collect_missed_inbound_for_worker(rows, known_exts)
+    call = next((c for c in missed if (c.get("linkedid") or "").strip() == lid), None)
+    if not call:
+        return {"ok": False, "linkedid": lid, "reason": "call_not_found_or_not_missed_inbound"}
+
+    try:
+        return await _process_missed_incoming(
+            call,
+            ignore_worker_start=True,
+            ignore_min_age=True,
+            force=force,
+            entity_source="admin_manual",
+        )
+    except Exception as exc:
+        log.exception("manual entity apply failed linkedid=%s: %s", lid, exc)
+        return {"ok": False, "linkedid": lid, "reason": f"{type(exc).__name__}: {exc}"}
 
 
 async def _poll_once() -> None:
@@ -505,7 +640,7 @@ async def _poll_once() -> None:
         return
 
     known_exts = _known_extensions()
-    missed = _extract_missed_inbound_calls(rows, known_exts)
+    missed = collect_missed_inbound_for_worker(rows, known_exts)
     missed = [c for c in missed if _call_is_after_worker_start(c)]
     print(
         f"[kommo_cdr_entity_worker] scan rows={len(rows)} missed_inbound={len(missed)}",

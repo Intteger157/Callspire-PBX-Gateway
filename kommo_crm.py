@@ -22,6 +22,42 @@ AMO_MISSED_CALL_STATUS = 6
 _RATE_INTERVAL = 0.5
 _last_request_at = 0.0
 
+# Tracking/integration tags auto-added to leads in Kommo (Yandex Metrica, etc.).
+_NOISE_LEAD_TAG_PREFIXES = (
+    "_ym_uid_",
+    "_ym_counter_",
+    "_ym_",
+    "_ga_",
+    "_fbp_",
+    "_fbc_",
+)
+_UUID_TAG_RE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    re.IGNORECASE,
+)
+
+
+def is_noise_lead_tag(name: str) -> bool:
+    """Hide auto-tracking tags from admin pickers (not useful for missed-call rules)."""
+    n = (name or "").strip()
+    if not n:
+        return True
+    lower = n.lower()
+    for prefix in _NOISE_LEAD_TAG_PREFIXES:
+        if lower.startswith(prefix):
+            return True
+    if _UUID_TAG_RE.match(n):
+        return True
+    # e.g. _ym_uid_1615483272928719271 — underscore prefix + long numeric tail
+    if re.match(r"^_[a-z0-9_]+_\d{10,}$", lower):
+        return True
+    # Import / chat paste junk often saved as tags in Amo.
+    if ".csv" in lower:
+        return True
+    if re.match(r"^\[\d{1,2}:\d{2}\]", n):
+        return True
+    return False
+
 
 @dataclass
 class ProcessCallOutcome:
@@ -911,6 +947,507 @@ class KommoCrmClient:
                 f"(attempt {attempt + 1}/4)",
                 flush=True,
             )
+        return None
+
+    def _is_lead_assigned_to_acting_user(
+        self, responsible_user_id: Any, *, strict: bool = True
+    ) -> bool:
+        """Auto-upload: only deals where responsible_user_id is the mapped Kommo user."""
+        acting = self.get_acting_user_id()
+        if acting is None:
+            return not strict
+        if responsible_user_id is None:
+            return False
+        try:
+            return int(responsible_user_id) == int(acting)
+        except (TypeError, ValueError):
+            return False
+
+    async def list_open_leads_for_contact(
+        self, contact_id: int
+    ) -> list[dict[str, Any]]:
+        """All open leads for a contact owned by the acting Kommo user."""
+        acting = self.get_acting_user_id()
+        resp = await self._request(
+            "GET",
+            f"/contacts/{contact_id}",
+            params={"with": "leads", "limit": 50, "order[created_at]": "desc"},
+        )
+        if resp.status_code != 200:
+            return []
+        leads = (resp.json().get("_embedded") or {}).get("leads") or []
+        out: list[dict[str, Any]] = []
+        seen: set[int] = set()
+        for short in leads[:30]:
+            lid = short.get("id")
+            if not lid:
+                continue
+            lead = short
+            if (
+                "closed_at" not in lead
+                or "created_at" not in lead
+                or "responsible_user_id" not in lead
+            ):
+                full = await self.get_lead(int(lid))
+                if not full:
+                    continue
+                lead = full
+            name = lead.get("name") or ""
+            if self._is_copy_lead(name):
+                continue
+            if lead.get("closed_at") is not None:
+                continue
+            if not self._is_lead_assigned_to_acting_user(lead.get("responsible_user_id")):
+                continue
+            lead_id = int(lid)
+            if lead_id in seen:
+                continue
+            seen.add(lead_id)
+            out.append(
+                {
+                    "id": lead_id,
+                    "name": name or f"Lead #{lead_id}",
+                    "contact_id": contact_id,
+                    "updated_at": lead.get("updated_at") or lead.get("created_at"),
+                }
+            )
+        out.sort(
+            key=lambda item: self._parse_ts(item.get("updated_at")),
+            reverse=True,
+        )
+        return out
+
+    async def list_open_leads_for_phone(
+        self, phone: str, *, own_only: bool = True, limit: int = 20
+    ) -> list[dict[str, Any]]:
+        """Open Kommo leads matching a phone number (for admin upload picker)."""
+        normalized = self.normalize_phone(phone)
+        if not normalized:
+            return []
+        contact_id = await self.find_contact_by_phone(phone)
+        if contact_id:
+            items = await self.list_open_leads_for_contact(contact_id)
+            if items:
+                return items[:limit]
+
+        variants = list(
+            dict.fromkeys(
+                self.phone_query_variants(normalized)
+                + self.phone_search_variants(normalized)
+            )
+        )
+        contact_cache: dict[int, Optional[dict]] = {}
+        collected: list[dict[str, Any]] = []
+        seen: set[int] = set()
+        for variant in variants:
+            resp = await self._request(
+                "GET",
+                "/leads",
+                params={
+                    "query": variant,
+                    "limit": 30,
+                    "order[updated_at]": "desc",
+                    "with": "contacts",
+                },
+            )
+            if resp.status_code == 204:
+                continue
+            if resp.status_code != 200:
+                log.warning("lead search by phone failed: %s", resp.status_code)
+                continue
+            leads = (resp.json().get("_embedded") or {}).get("leads") or []
+            for item in await self._collect_leads_from_search_results(
+                leads,
+                normalized,
+                open_only=True,
+                own_only=own_only,
+                contact_cache=contact_cache,
+            ):
+                lid = int(item["id"])
+                if lid in seen:
+                    continue
+                seen.add(lid)
+                collected.append(item)
+                if len(collected) >= limit:
+                    return collected
+        collected.sort(
+            key=lambda item: self._parse_ts(item.get("updated_at")),
+            reverse=True,
+        )
+        return collected[:limit]
+
+    async def _collect_leads_from_search_results(
+        self,
+        leads: list[dict],
+        normalized_phone: str,
+        *,
+        open_only: bool,
+        own_only: bool,
+        contact_cache: dict[int, Optional[dict]],
+    ) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
+        for lead in leads[:30]:
+            lid = lead.get("id")
+            if not lid:
+                continue
+            name = lead.get("name") or ""
+            if self._is_copy_lead(name):
+                continue
+            is_open = lead.get("closed_at") is None
+            if not is_open and open_only:
+                continue
+
+            lead_for_owner = lead
+            contacts = ((lead.get("_embedded") or {}).get("contacts")) or []
+            if not contacts or (own_only and "responsible_user_id" not in lead):
+                full = await self.get_lead_with_contacts(int(lid))
+                if full:
+                    lead_for_owner = full
+                    contacts = (((full or {}).get("_embedded") or {}).get("contacts")) or []
+            if not contacts:
+                continue
+            if own_only and not self._is_lead_assigned_to_acting_user(
+                lead_for_owner.get("responsible_user_id")
+            ):
+                continue
+
+            has_phone = False
+            matched_contact_id: Optional[int] = None
+            contact_count = 0
+            for contact in contacts:
+                cid = contact.get("id")
+                if not cid:
+                    continue
+                contact_count += 1
+                cid = int(cid)
+                if cid not in contact_cache:
+                    contact_cache[cid] = await self._get_contact(cid)
+                full_contact = contact_cache[cid]
+                if full_contact and self._contact_has_phone(full_contact, normalized_phone):
+                    has_phone = True
+                    matched_contact_id = cid
+                    break
+                if self._contact_has_phone(contact, normalized_phone):
+                    has_phone = True
+                    matched_contact_id = cid
+                    break
+
+            if not has_phone and not open_only and contact_count > 0:
+                has_phone = True
+            if not has_phone:
+                continue
+            out.append(
+                {
+                    "id": int(lid),
+                    "name": name or f"Lead #{lid}",
+                    "contact_id": matched_contact_id,
+                    "updated_at": lead_for_owner.get("updated_at")
+                    or lead_for_owner.get("created_at"),
+                }
+            )
+        return out
+
+    async def get_lead_with_contacts(self, lead_id: int) -> Optional[dict]:
+        resp = await self._request(
+            "GET", f"/leads/{lead_id}", params={"with": "contacts"}
+        )
+        if resp.status_code == 200:
+            return resp.json()
+        if resp.status_code == 204:
+            return await self._get_lead_via_filter(lead_id, with_contacts=True)
+        return None
+
+    async def _get_lead_via_filter(
+        self, lead_id: int, *, with_contacts: bool = False
+    ) -> Optional[dict]:
+        # Some API tokens get 204 on direct GET /leads/{id} even for leads that
+        # exist; the list endpoint with filter[id] usually still returns them
+        # (same workaround as _get_contact). Without it we'd skip the lead and
+        # attach the call to the contact instead.
+        params: dict = {"filter[id][]": lead_id, "limit": 1}
+        if with_contacts:
+            params["with"] = "contacts"
+        resp = await self._request("GET", "/leads", params=params)
+        if resp.status_code != 200:
+            return None
+        leads = (resp.json().get("_embedded") or {}).get("leads") or []
+        return leads[0] if leads else None
+
+    async def list_pipelines(self) -> list[dict[str, Any]]:
+        resp = await self._request("GET", "/leads/pipelines", params={"with": "statuses"})
+        if resp.status_code != 200:
+            log.warning("list pipelines failed: %s", resp.status_code)
+            return []
+        pipelines = (resp.json().get("_embedded") or {}).get("pipelines") or []
+        out: list[dict[str, Any]] = []
+        for pipe in pipelines:
+            pid = pipe.get("id")
+            if not pid:
+                continue
+            statuses = []
+            for st in ((pipe.get("_embedded") or {}).get("statuses")) or []:
+                sid = st.get("id")
+                if sid:
+                    statuses.append({"id": int(sid), "name": st.get("name") or f"Stage #{sid}"})
+            out.append(
+                {
+                    "id": int(pid),
+                    "name": pipe.get("name") or f"Pipeline #{pid}",
+                    "statuses": statuses,
+                }
+            )
+        return out
+
+    async def _fetch_entity_tags_paginated(
+        self,
+        entity_type: str,
+        *,
+        query: str = "",
+        max_pages: int = 1,
+    ) -> list[dict[str, Any]]:
+        """Load tag pages for leads/contacts (Kommo limit 250/page)."""
+        out: list[dict[str, Any]] = []
+        q = (query or "").strip()
+        page_limit = max(1, min(int(max_pages or 1), 40))
+        page = 1
+        while page <= page_limit:
+            params: dict[str, Any] = {"page": page, "limit": 250}
+            if q:
+                params["query"] = q
+            resp = await self._request("GET", f"/{entity_type}/tags", params=params)
+            if resp.status_code != 200:
+                log.warning(
+                    "list %s tags failed on page %s: %s %s",
+                    entity_type,
+                    page,
+                    resp.status_code,
+                    resp.text[:200],
+                )
+                break
+            data = resp.json()
+            tags = (data.get("_embedded") or {}).get("tags") or []
+            if not tags:
+                break
+            for tag in tags:
+                tid = tag.get("id")
+                if not tid:
+                    continue
+                name = tag.get("name") or f"Tag #{tid}"
+                if is_noise_lead_tag(name):
+                    continue
+                out.append(
+                    {
+                        "id": int(tid),
+                        "name": name,
+                        "color": tag.get("color"),
+                        "source": entity_type,
+                    }
+                )
+            if len(tags) < 250:
+                break
+            links = data.get("_links") if isinstance(data.get("_links"), dict) else {}
+            if not links.get("next"):
+                break
+            page += 1
+        return out
+
+    async def list_lead_tags(self, *, query: str = "") -> list[dict[str, Any]]:
+        """Tags for admin rule picker: lead tags + contact-only tags (by name)."""
+        q = (query or "").strip()
+        # Full catalog scan is too slow (rate limit + thousands of tags). Search loads more pages.
+        max_pages = 8 if len(q) >= 2 else 1
+        lead_tags = await self._fetch_entity_tags_paginated(
+            "leads", query=q, max_pages=max_pages
+        )
+        contact_tags = await self._fetch_entity_tags_paginated(
+            "contacts", query=q, max_pages=max_pages
+        )
+        by_name: dict[str, dict[str, Any]] = {}
+        for tag in lead_tags:
+            key = (tag.get("name") or "").strip().lower()
+            if not key:
+                continue
+            by_name[key] = {
+                "id": tag["id"],
+                "name": tag["name"],
+                "color": tag.get("color"),
+                "source": "leads",
+            }
+        for tag in contact_tags:
+            key = (tag.get("name") or "").strip().lower()
+            if not key or key in by_name:
+                continue
+            by_name[key] = {
+                "id": tag["id"],
+                "name": tag["name"],
+                "color": tag.get("color"),
+                "source": "contacts",
+            }
+        out = list(by_name.values())
+        out.sort(key=lambda t: (t.get("name") or "").lower())
+        return out
+
+    async def get_contact_responsible_user_id(self, contact_id: int) -> Optional[int]:
+        contact = await self._get_contact(contact_id)
+        if not contact:
+            return None
+        uid = contact.get("responsible_user_id")
+        try:
+            return int(uid) if uid is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    async def get_lead_responsible_user_id(self, lead_id: int) -> Optional[int]:
+        lead = await self.get_lead(lead_id)
+        if not lead:
+            return None
+        uid = lead.get("responsible_user_id")
+        try:
+            return int(uid) if uid is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    def _phone_custom_field(self, phone: str) -> list[dict[str, Any]]:
+        return [
+            {
+                "field_code": "PHONE",
+                "values": [{"value": phone, "enum_code": "WORK"}],
+            }
+        ]
+
+    async def create_contact_and_lead(
+        self,
+        phone: str,
+        *,
+        contact_name: str,
+        lead_name: str,
+        pipeline_id: Any = None,
+        status_id: Any = None,
+        responsible_user_id: Optional[int] = None,
+        tag_id: Any = None,
+        tag_name: Optional[str] = None,
+    ) -> Optional[dict[str, int]]:
+        user_id = responsible_user_id or self.get_acting_user_id()
+        if not user_id:
+            log.warning("create_contact_and_lead: no responsible user")
+            return None
+        item: dict[str, Any] = {
+            "name": lead_name,
+            "responsible_user_id": int(user_id),
+            "created_by": int(user_id),
+            "_embedded": {
+                "contacts": [
+                    {
+                        "name": contact_name,
+                        "responsible_user_id": int(user_id),
+                        "created_by": int(user_id),
+                        "custom_fields_values": self._phone_custom_field(phone),
+                    }
+                ]
+            },
+        }
+        try:
+            if pipeline_id:
+                item["pipeline_id"] = int(pipeline_id)
+            if status_id:
+                item["status_id"] = int(status_id)
+        except (TypeError, ValueError):
+            pass
+        tag_entry: Optional[dict[str, Any]] = None
+        try:
+            if tag_id:
+                n = int(tag_id)
+                if n > 0:
+                    tag_entry = {"id": n}
+        except (TypeError, ValueError):
+            tag_entry = None
+        if tag_entry is None:
+            name = (tag_name or "").strip()
+            if name:
+                tag_entry = {"name": name}
+        if tag_entry:
+            item["tags_to_add"] = [tag_entry]
+        resp = await self._request("POST", "/leads/complex", json_body=[item])
+        if resp.status_code not in (200, 201):
+            log.warning(
+                "create_contact_and_lead failed: %s %s",
+                resp.status_code,
+                resp.text[:300],
+            )
+            return None
+        data = resp.json()
+        leads: list[Any] = []
+        if isinstance(data, list):
+            leads = data
+        elif isinstance(data, dict):
+            embedded = data.get("_embedded")
+            if isinstance(embedded, dict):
+                raw = embedded.get("leads")
+                if isinstance(raw, list):
+                    leads = raw
+            if not leads and data.get("id"):
+                leads = [data]
+        if not leads:
+            log.warning("create_contact_and_lead: unexpected response shape: %s", str(data)[:300])
+            return None
+        lead = leads[0] if isinstance(leads[0], dict) else {}
+        lead_id = lead.get("id")
+        contact_id = None
+        embedded = lead.get("_embedded") if isinstance(lead, dict) else None
+        contacts = []
+        if isinstance(embedded, dict):
+            raw_contacts = embedded.get("contacts")
+            if isinstance(raw_contacts, list):
+                contacts = raw_contacts
+        if contacts and isinstance(contacts[0], dict) and contacts[0].get("id"):
+            contact_id = int(contacts[0]["id"])
+        if not contact_id:
+            contact_id = await self.find_contact_by_phone(phone)
+        if not lead_id:
+            return None
+        print(
+            f"[kommo_crm] created contact={contact_id} lead={lead_id} for {phone}"
+            + (f" tag={tag_entry}" if tag_entry else ""),
+            flush=True,
+        )
+        return {
+            "contact_id": int(contact_id) if contact_id else None,
+            "lead_id": int(lead_id),
+        }
+
+    async def create_task(
+        self,
+        text: str,
+        *,
+        entity_type: str,
+        entity_id: int,
+        responsible_user_id: int,
+        complete_till: int,
+    ) -> Optional[int]:
+        body = [
+            {
+                "text": text,
+                "entity_type": entity_type,
+                "entity_id": int(entity_id),
+                "responsible_user_id": int(responsible_user_id),
+                "complete_till": int(complete_till),
+            }
+        ]
+        resp = await self._request("POST", "/tasks", json_body=body)
+        if resp.status_code in (200, 201):
+            task_id: Optional[int] = None
+            try:
+                tasks = (resp.json().get("_embedded") or {}).get("tasks") or []
+                if tasks and tasks[0].get("id") is not None:
+                    task_id = int(tasks[0]["id"])
+            except (TypeError, ValueError, AttributeError):
+                task_id = None
+            print(
+                f"[kommo_crm] task created on {entity_type}/{entity_id} id={task_id or '?'}: {text[:80]}",
+                flush=True,
+            )
+            return task_id if task_id is not None else 0
+        log.warning("create task failed: %s %s", resp.status_code, resp.text[:300])
         return None
 
     async def _add_call_note(
