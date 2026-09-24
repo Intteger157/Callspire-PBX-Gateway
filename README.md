@@ -60,8 +60,3 @@ python app.py
 ```
 
 Тесты dedup Kommo jobs (опционально): `python -m unittest test_kommo_job_dedup`.
-
-## Связанные репозитории
-
-- Desktop / Core — монорепозиторий Softphone (`Callspire.Core`, gateway mode).
-- Mobile — [IntermarkCaller](https://github.com/IntermarkGlobal/IntermarkCaller) (IGCaller).
