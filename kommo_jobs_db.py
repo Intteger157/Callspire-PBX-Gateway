@@ -9,6 +9,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
 
+from phone_normalize import phones_match_for_dedup
+
 
 def _parse_call_time_iso(value: str) -> Optional[datetime]:
     if not value:
@@ -700,6 +702,64 @@ def fail_superseded_queued_jobs(
                 UPDATE kommo_call_jobs
                 SET status = 'failed',
                     reason = 'Superseded by newer call',
+                    updated_at = ?
+                WHERE id = ?
+                """,
+                (now, row["id"]),
+            )
+            count += 1
+        conn.commit()
+    return count
+
+
+def fail_weaker_duplicate_jobs(
+    extension: str,
+    phone: str,
+    call_time: str,
+    except_job_id: str,
+    *,
+    incoming_was_answered: bool,
+    window_sec: int = 120,
+) -> int:
+    """Drop unanswered jobs when another client (web vs mobile) reports the same call answered.
+
+    Session ids differ between clients, so this matches on phone + call time only.
+    """
+    if not incoming_was_answered:
+        return 0
+    phone = (phone or "").strip()
+    call_dt = _parse_call_time_iso(call_time)
+    if not phone or call_dt is None:
+        return 0
+    now = _now_iso()
+    count = 0
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, payload_json FROM kommo_call_jobs
+            WHERE extension = ?
+              AND status IN ('queued', 'waiting_recording')
+              AND id != ?
+            """,
+            (extension, except_job_id),
+        ).fetchall()
+        for row in rows:
+            try:
+                payload = json.loads(row["payload_json"] or "{}")
+            except json.JSONDecodeError:
+                continue
+            if payload.get("was_answered"):
+                continue
+            if not phones_match_for_dedup(payload.get("phone"), phone):
+                continue
+            other_dt = _parse_call_time_iso(str(payload.get("call_time") or ""))
+            if other_dt is None or abs((other_dt - call_dt).total_seconds()) > window_sec:
+                continue
+            conn.execute(
+                """
+                UPDATE kommo_call_jobs
+                SET status = 'failed',
+                    reason = 'Superseded by answered report from another client',
                     updated_at = ?
                 WHERE id = ?
                 """,

@@ -683,6 +683,18 @@ def register_kommo_routes(
                     f"[kommo] dropped {dropped} superseded queued job(s) for {body.phone}",
                     flush=True,
                 )
+            weaker = kommo_jobs_db.fail_weaker_duplicate_jobs(
+                ext,
+                body.phone,
+                body.call_time,
+                job["id"],
+                incoming_was_answered=bool(body.was_answered),
+            )
+            if weaker:
+                print(
+                    f"[kommo] dropped {weaker} weaker duplicate job(s) for {body.phone}",
+                    flush=True,
+                )
         await _ensure_workers()
         return _job_to_api(job)
 

@@ -1,4 +1,4 @@
-"""Authentication module for MikoPBX CDR Proxy.
+"""Authentication module for Callspire PBX Gateway.
 
 Supports two authentication paths:
 1. Admin — username/bcrypt-hash from config.yaml ``users`` list.
@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 
 import bcrypt
 import jwt
+import hmac
 
 import permissions_db
 
@@ -25,11 +26,7 @@ def authenticate_user(username: str, password: str, users: list[dict]) -> dict |
     """Authenticate against the ``users`` list in config.yaml (bcrypt hashes)."""
     for u in users:
         if u["username"] == username and verify_password(password, u["password_hash"]):
-            return {
-                **u,
-                "role": "admin",
-                "must_change_password": bool(u.get("must_change_password")),
-            }
+            return {**u, "role": "admin"}
     return None
 
 
@@ -42,6 +39,7 @@ def authenticate_mikopbx_user(
 
     Returns a dict with ``extension``, ``name``, ``role`` on success, or *None*.
     """
+    conn: sqlite3.Connection | None = None
     try:
         conn = sqlite3.connect(f"file:{config_db_path}?mode=ro", uri=True)
         row = conn.execute(
@@ -49,11 +47,18 @@ def authenticate_mikopbx_user(
             "WHERE type='peer' AND extension=? AND disabled='0'",
             (extension,),
         ).fetchone()
-        conn.close()
     except Exception:
         return None
+    finally:
+        try:
+            if conn is not None:
+                conn.close()
+        except Exception:
+            pass
 
-    if row is None or row[1] != password:
+    # MikoPBX stores SIP secrets in plaintext, so compare using constant-time equality
+    # to avoid timing leaks on internet-exposed deployments.
+    if row is None or not hmac.compare_digest(str(row[1] or ""), str(password or "")):
         return None
 
     return {
@@ -96,12 +101,18 @@ def create_jwt(
     extension: str | None = None,
     must_change_password: bool | None = None,
 ) -> str:
+    """Create a signed JWT.
+
+    ``expire_days=0`` omits the ``exp`` claim so the token never expires on
+    the server (desktop softphone sessions stay valid until re-authorization).
+    """
     payload: dict = {
         "sub": username,
         "role": role,
         "iat": datetime.now(timezone.utc),
-        "exp": datetime.now(timezone.utc) + timedelta(days=expire_days),
     }
+    if expire_days > 0:
+        payload["exp"] = datetime.now(timezone.utc) + timedelta(days=expire_days)
     if name:
         payload["name"] = name
     if extension:

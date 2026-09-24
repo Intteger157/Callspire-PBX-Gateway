@@ -14,3 +14,6 @@ venv/
 *.sqlite3-journal
 *.db
 permissions.db
+
+# Production snapshots (may contain local DB / config copies)
+bkp-*.tar.gz

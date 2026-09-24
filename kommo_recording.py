@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import logging
 import asyncio
-import shutil
-import subprocess
 import tempfile
+import wave
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -14,17 +13,12 @@ from typing import Any, Awaitable, Callable, Optional, Union
 
 log = logging.getLogger("kommo_recording")
 
-PBX_CDR_RETRY_DELAYS = [0, 3, 5, 10, 15, 20]
-CDR_LOOKUP_DELAYS = [0, 3, 5, 8, 12, 20]
-# Defaults; kommo_call_worker.configure() may raise these from config.yaml under load.
+PBX_CDR_RETRY_DELAYS = [0, 2, 5, 8]
+CDR_LOOKUP_DELAYS = [0]
 MAX_PBX_RECORDING_JOB_RETRIES = 6
-JOB_RETRY_WAITS_SEC = [10, 15, 20, 30, 45, 60]
+JOB_RETRY_WAITS_SEC = [3, 5, 8, 12, 15, 20]
 MAX_START_DIFF_SECONDS = 180
-# Tight window for recording match — consecutive calls to the same number are often
-# seconds apart; a wide window reuses the previous call's CDR/recording.
-MAX_RECORDING_START_DIFF_SECONDS = 28
-# Ignore CDR legs that clearly ended before this call started (prior call to same number).
-CDR_END_BEFORE_CALL_MARGIN_SEC = 1
+MAX_RECORDING_START_DIFF_SECONDS = 55
 _COMMON_UTC_OFFSETS = (0, 3, 4, 2, 5, -5, -4, -6, 1, -3)
 
 # Kommo missed-call status (same as kommo_crm.AMO_MISSED_CALL_STATUS)
@@ -44,9 +38,6 @@ class CdrCallInfo:
     was_answered: bool
     kommo_call_result: str
     kommo_call_status: Optional[int]
-    # Miko finished post-processing every leg of this call (work_completed="1").
-    # When True and has_recording is False, the recording will never appear.
-    work_completed: bool = False
 
 
 @dataclass
@@ -61,87 +52,81 @@ def configure_pbx_timezone(offset_hours: float) -> None:
     _pbx_utc_offset_hours = float(offset_hours or 0)
 
 
-def _as_utc(dt: datetime) -> datetime:
-    return dt.astimezone(timezone.utc) if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
-
-
 def _pbx_local_sql_window(call_time: datetime) -> tuple[str, str]:
     """Build start/end for CDR SQL — Miko stores naive local wall clock."""
-    return _pbx_local_sql_window_for_times([call_time])
-
-
-def _pbx_local_sql_window_for_times(times: list[datetime]) -> tuple[str, str]:
-    """Union SQL window covering several UTC call-start anchors."""
-    if not times:
-        times = [datetime.now(timezone.utc)]
-    locals = [
-        (_as_utc(t) + timedelta(hours=_pbx_utc_offset_hours)).replace(tzinfo=None)
-        for t in times
-    ]
-    start = min(locals) - timedelta(hours=2)
-    end = max(locals) + timedelta(hours=2)
+    ct = call_time if call_time.tzinfo else call_time.replace(tzinfo=timezone.utc)
+    local = (ct + timedelta(hours=_pbx_utc_offset_hours)).replace(tzinfo=None)
+    start = local - timedelta(hours=2)
+    end = local + timedelta(hours=2)
     fmt = "%Y-%m-%d %H:%M:%S"
     return start.strftime(fmt), end.strftime(fmt)
 
 
-def build_cdr_match_times(
-    call_time: datetime,
+async def wait_recording_file_stable(
+    path: Path,
     *,
-    call_end_time: Optional[datetime] = None,
-    answer_time: Optional[datetime] = None,
-    call_duration_sec: Optional[int] = None,
-    job_created_at: Optional[datetime] = None,
-) -> list[datetime]:
-    """UTC anchors for matching browser timestamps to PBX-local CDR start.
-
-    Web softphone may enqueue Kommo upload tens of seconds after hangup with a
-    ``call_time`` that reflects the delayed upload, not dial start. When
-    ``call_time`` is after ``job_created_at``, prefer job-based anchors.
-    """
-    ct = _as_utc(call_time)
-    out: list[datetime] = []
-    seen: set[str] = set()
-
-    def add(dt: Optional[datetime]) -> None:
-        if dt is None:
-            return
-        n = _as_utc(dt)
-        key = n.isoformat()
-        if key in seen:
-            return
-        seen.add(key)
-        out.append(n)
-
-    add(ct)
-    dur = int(call_duration_sec or 0)
-    cet = _as_utc(call_end_time) if call_end_time else None
-    ans = _as_utc(answer_time) if answer_time else None
-    jca = _as_utc(job_created_at) if job_created_at else None
-
-    if cet and dur > 0:
-        add(cet - timedelta(seconds=dur))
-    if ans and dur > 0:
-        add(ans - timedelta(seconds=dur))
-    if jca:
-        add(jca)
-        if dur > 0:
-            add(jca - timedelta(seconds=dur))
-        for pad in (45, 60, 90, 120):
-            add(jca - timedelta(seconds=pad))
-            add(jca - timedelta(seconds=max(dur, 0) + pad))
-
-    if jca and ct > jca + timedelta(seconds=20):
-        preferred = [t for t in out if t <= jca + timedelta(seconds=15)]
-        rest = [t for t in out if t not in preferred]
-        out = preferred + rest
-
-    return out or [ct]
+    billsec: int = 0,
+    interval_sec: float = 1.0,
+    max_wait_sec: float = 8.0,
+) -> bool:
+    """Return True once the PBX recording file exists, is non-empty and stops growing."""
+    p = Path(path)
+    waited = 0.0
+    last_size = -1
+    while True:
+        try:
+            size = p.stat().st_size if p.is_file() else 0
+        except OSError:
+            size = 0
+        if size > 0 and size == last_size:
+            return True
+        if waited >= max_wait_sec:
+            return size > 0
+        last_size = size
+        await asyncio.sleep(interval_sec)
+        waited += interval_sec
 
 
-def _best_call_vs_cdr_diff(rec_time: datetime, cdr_match_times: list[datetime]) -> float:
-    if not cdr_match_times:
-        return float("inf")
-    return min(_call_vs_cdr_diff_seconds(rec_time, t) for t in cdr_match_times)
+def recording_file_duration_seconds(path: Optional[str]) -> Optional[int]:
+    """Best-effort media duration for Kommo call-note sync (WAV from Miko PBX)."""
+    if not path:
+        return None
+    p = Path(path)
+    if not p.is_file():
+        return None
+    suffix = p.suffix.lower()
+    try:
+        if suffix == ".wav":
+            with wave.open(str(p), "rb") as wav_file:
+                frames = wav_file.getnframes()
+                rate = wav_file.getframerate()
+                if rate <= 0:
+                    return None
+                return max(0, int(round(frames / float(rate))))
+    except (OSError, wave.Error):
+        return None
+    return None
+
+
+def find_downloaded_recording(work_dir: Path, linkedid: str) -> Optional[Path]:
+    """Locate the copied Miko file (keeps original PBX filename, not mikopbx_*.mp3)."""
+    del linkedid  # job work_dir is unique; any non-staging file is the recording
+    if not work_dir.is_dir():
+        return None
+    candidates: list[Path] = []
+    for candidate in work_dir.iterdir():
+        if not candidate.is_file() or candidate.name.startswith(".download_"):
+            continue
+        try:
+            if candidate.stat().st_size > 0:
+                candidates.append(candidate)
+        except OSError:
+            continue
+    if not candidates:
+        return None
+    if len(candidates) == 1:
+        return candidates[0]
+    return max(candidates, key=lambda p: p.stat().st_mtime)
 
 
 def is_recording_usable(path: Optional[str]) -> bool:
@@ -152,85 +137,6 @@ def is_recording_usable(path: Optional[str]) -> bool:
         return p.is_file() and p.stat().st_size > 0
     except OSError:
         return False
-
-
-def _stability_probe_plan(billsec: int) -> tuple[int, float]:
-    """How long to wait until a Miko monitor file stops growing (webm mux)."""
-    bs = max(0, int(billsec or 0))
-    if bs >= 600:
-        return 5, 4.0
-    if bs >= 180:
-        return 4, 3.0
-    if bs >= 60:
-        return 4, 2.5
-    return 3, 2.0
-
-
-async def wait_recording_file_stable(
-    path: Path,
-    *,
-    billsec: int = 0,
-) -> bool:
-    """True when file byte size is unchanged across consecutive probes."""
-    probes, interval = _stability_probe_plan(billsec)
-    try:
-        size = path.stat().st_size
-    except OSError:
-        return False
-    if size <= 0:
-        return False
-    for _ in range(probes - 1):
-        await asyncio.sleep(interval)
-        try:
-            new_size = path.stat().st_size
-        except OSError:
-            return False
-        if new_size != size:
-            print(
-                f"[kommo_recording] recording still growing {path.name}: "
-                f"{size} -> {new_size} bytes",
-                flush=True,
-            )
-            return False
-        size = new_size
-    return True
-
-
-def _probe_audio_duration_sec(path: Path) -> Optional[float]:
-    """Media duration via ffprobe when available (optional sanity check)."""
-    if shutil.which("ffprobe") is None:
-        return None
-    try:
-        result = subprocess.run(
-            [
-                "ffprobe",
-                "-v",
-                "error",
-                "-show_entries",
-                "format=duration",
-                "-of",
-                "default=noprint_wrappers=1:nokey=1",
-                str(path),
-            ],
-            capture_output=True,
-            text=True,
-            timeout=45,
-        )
-        if result.returncode != 0:
-            return None
-        return float((result.stdout or "").strip())
-    except (OSError, ValueError, subprocess.TimeoutExpired):
-        return None
-
-
-def _compressed_min_bytes_per_sec(billsec: int) -> int:
-    """Floor bytes/sec for webm/mp3 monitor files (~48–64 kbps Opus)."""
-    bs = max(0, int(billsec or 0))
-    if bs >= 600:
-        return 7000
-    if bs >= 120:
-        return 6500
-    return 5500
 
 
 def is_pbx_recording_acceptable(
@@ -245,19 +151,16 @@ def is_pbx_recording_acceptable(
     if not is_recording_usable(pbx_path):
         return False, "PBX file missing or empty"
 
+    if not was_answered:
+        return False, "PBX CDR not answered — skip ring-only recording"
+
     compare_duration = call_duration_sec
+    if cdr_duration_sec and cdr_duration_sec > compare_duration:
+        compare_duration = int(cdr_duration_sec)
     if was_answered and answer_time and call_duration_sec > 0:
         pre_answer = (answer_time - call_time).total_seconds()
         if 0 < pre_answer < call_duration_sec:
             compare_duration = max(1, call_duration_sec - int(round(pre_answer)))
-
-    # WebRTC originate: browser timer runs from local auto-answer through PSTN ring
-    # to callee/IVR; PBX billsec is talk time on the trunk leg only.
-    if cdr_duration_sec and cdr_duration_sec > 0 and compare_duration > cdr_duration_sec:
-        if compare_duration >= 15 and cdr_duration_sec <= compare_duration // 2:
-            compare_duration = cdr_duration_sec
-        elif compare_duration > max(cdr_duration_sec * 4, cdr_duration_sec + 25):
-            compare_duration = cdr_duration_sec
 
     if cdr_duration_sec and cdr_duration_sec > 0 and compare_duration >= 3:
         diff = abs(cdr_duration_sec - compare_duration)
@@ -268,186 +171,28 @@ def is_pbx_recording_acceptable(
                 f"(diff {diff}s > tolerance {tolerance}s)"
             )
 
-    if not was_answered or compare_duration < 5:
+    if compare_duration < 5:
         return True, None
 
-    pbx_file = Path(pbx_path)
     try:
-        pbx_bytes = pbx_file.stat().st_size
-    except OSError:
-        return False, "PBX file stat failed"
-
-    duration_for_size = (
-        cdr_duration_sec if cdr_duration_sec and cdr_duration_sec > 0 else compare_duration
-    )
-    compressed = str(pbx_path).lower().endswith((".webm", ".mp3", ".ogg"))
-
-    if compressed and duration_for_size >= 30:
-        min_bps = _compressed_min_bytes_per_sec(duration_for_size)
-        min_bytes = max(8000, duration_for_size * min_bps)
-        if pbx_bytes < min_bytes:
-            return False, (
-                f"PBX file too small ({pbx_bytes} bytes < min {min_bytes} "
-                f"for ~{duration_for_size}s talk)"
-            )
-    elif not compressed:
-        floor_bytes = 8000 if duration_for_size < 30 else 50_000
-        min_bps = 1500 if duration_for_size < 30 else 4000
+        pbx_bytes = Path(pbx_path).stat().st_size
+        duration_for_size = cdr_duration_sec if cdr_duration_sec and cdr_duration_sec > 0 else compare_duration
+        compressed = str(pbx_path).lower().endswith((".webm", ".mp3", ".ogg"))
+        if compare_duration < 30:
+            min_bps = 200 if compressed else 1500
+            floor_bytes = 1500 if compressed else 8000
+        else:
+            min_bps = 400 if compressed else 4000
+            floor_bytes = 4000 if compressed else 50_000
         min_bytes = max(floor_bytes, duration_for_size * min_bps)
         if pbx_bytes < min_bytes:
             return False, (
                 f"PBX file too small ({pbx_bytes} bytes < min {min_bytes} "
                 f"for ~{duration_for_size}s)"
             )
-
-    if duration_for_size >= 45 and compressed:
-        probed = _probe_audio_duration_sec(pbx_file)
-        if probed is not None:
-            # Reject truncated mux (e.g. 105s file uploaded for 902s CDR billsec).
-            min_ratio = 0.82 if duration_for_size >= 120 else 0.75
-            if probed + 3 < duration_for_size * min_ratio:
-                return False, (
-                    f"probed audio {probed:.1f}s vs CDR talk {duration_for_size}s "
-                    f"(file likely still muxing or incomplete)"
-                )
-
+    except OSError:
+        pass
     return True, None
-
-
-_PBX_RECORDING_SUFFIXES = (".webm", ".mp3", ".wav", ".ogg")
-
-
-def _recording_suffixes_for_linkedid(records: list[dict], linkedid: str) -> tuple[str, ...]:
-    """Use the Miko recording extension from CDR — do not fall back to .mp3 for .webm calls.
-
-    Trying .mp3 after a failed .webm copy still reads the same growing file from disk
-    and saves it under a wrong name (Kommo then transcodes truncated audio).
-    """
-    for r in records:
-        if (r.get("linkedid") or r.get("linked_id")) != linkedid:
-            continue
-        rec = str(r.get("recording") or r.get("recordingfile") or "").strip()
-        if rec:
-            suffix = Path(rec).suffix.lower()
-            if suffix in _PBX_RECORDING_SUFFIXES:
-                return (suffix,)
-    return _PBX_RECORDING_SUFFIXES
-
-
-async def _download_linkedid_recording(
-    *,
-    download_recording: Callable[[str, Path], Any],
-    linkedid: str,
-    work_dir: Path,
-    records: list[dict],
-    cdr_info: CdrCallInfo,
-    was_answered: bool,
-    call_duration_sec: int,
-    answer_time: Optional[datetime],
-    call_time: datetime,
-) -> Optional[str]:
-    """Try direct download by linkedid; Miko often has the file before CDR lists recordingfile."""
-    if pbx_recording_definitely_absent(cdr_info):
-        print(
-            f"[kommo_recording] linkedid={linkedid} work_completed=1 without recordingfile "
-            f"— skip download",
-            flush=True,
-        )
-        return None
-    # CDR billsec is final at hangup, but Miko may still be muxing wav48 → webm.
-    # Downloading too early yields a truncated file while the Kommo note uses full billsec.
-    if (
-        cdr_info.was_answered
-        and cdr_info.billsec > 0
-        and not cdr_info.work_completed
-    ):
-        print(
-            f"[kommo_recording] linkedid={linkedid} work_completed=0 billsec={cdr_info.billsec} "
-            f"— wait for Miko recording post-processing",
-            flush=True,
-        )
-        return None
-    billsec_hint = int(cdr_info.billsec or cdr_info.duration or 0)
-    if billsec_hint >= 600:
-        await asyncio.sleep(12)
-    elif billsec_hint >= 180:
-        await asyncio.sleep(6)
-    elif billsec_hint >= 60:
-        await asyncio.sleep(3)
-    cdr_duration = cdr_info.billsec or cdr_info.duration or None
-    suffixes = _recording_suffixes_for_linkedid(records, linkedid)
-    for rec_attempt, rec_delay in enumerate(PBX_CDR_RETRY_DELAYS):
-        if rec_delay > 0:
-            await asyncio.sleep(rec_delay)
-            if rec_attempt > 0:
-                msg = (
-                    f"[kommo_recording] recording download retry {rec_attempt} "
-                    f"linkedid={linkedid}"
-                )
-                log.info(msg)
-                print(msg, flush=True)
-        for suffix in suffixes:
-            dest = work_dir / f"mikopbx_{linkedid}{suffix}"
-            try:
-                dest.unlink(missing_ok=True)
-            except OSError:
-                pass
-            try:
-                try:
-                    ok = await download_recording(
-                        linkedid, dest, billsec=billsec_hint
-                    )
-                except TypeError:
-                    ok = await download_recording(linkedid, dest)
-            except Exception as exc:
-                log.warning("recording download failed: %s", exc)
-                print(
-                    f"[kommo_recording] download failed linkedid={linkedid}: {exc}",
-                    flush=True,
-                )
-                continue
-            if not ok or not dest.is_file():
-                print(
-                    f"[kommo_recording] download empty linkedid={linkedid} suffix={suffix}",
-                    flush=True,
-                )
-                continue
-            if not await wait_recording_file_stable(dest, billsec=billsec_hint):
-                print(
-                    f"[kommo_recording] linkedid={linkedid} downloaded file still growing "
-                    f"— wait for Miko mux",
-                    flush=True,
-                )
-                try:
-                    dest.unlink(missing_ok=True)
-                except OSError:
-                    pass
-                continue
-            acceptable, reason = is_pbx_recording_acceptable(
-                was_answered=was_answered,
-                call_duration_sec=call_duration_sec,
-                answer_time=answer_time,
-                call_time=call_time,
-                pbx_path=str(dest),
-                cdr_duration_sec=cdr_duration,
-            )
-            if acceptable:
-                print(
-                    f"[kommo_recording] recording ready linkedid={linkedid} "
-                    f"path={dest.name} bytes={dest.stat().st_size}",
-                    flush=True,
-                )
-                return str(dest)
-            log.info("PBX recording rejected: %s", reason)
-            print(
-                f"[kommo_recording] rejected linkedid={linkedid} ({dest.name}): {reason}",
-                flush=True,
-            )
-            try:
-                dest.unlink(missing_ok=True)
-            except OSError:
-                pass
-    return None
 
 
 def _parse_cdr_start(value: Any) -> Optional[datetime]:
@@ -471,37 +216,6 @@ def _parse_cdr_start(value: Any) -> Optional[datetime]:
         return dt.replace(tzinfo=None) if dt.tzinfo else dt
     except ValueError:
         return None
-
-
-def _cdr_start_as_utc(rec_time: datetime) -> datetime:
-    """Convert naive PBX-local CDR start to UTC for comparisons with client call_time."""
-    if rec_time.tzinfo is not None:
-        return rec_time.astimezone(timezone.utc)
-    if _pbx_utc_offset_hours:
-        return (rec_time - timedelta(hours=_pbx_utc_offset_hours)).replace(tzinfo=timezone.utc)
-    return rec_time.replace(tzinfo=timezone.utc)
-
-
-def _cdr_leg_ended_before_call(
-    rec_time: datetime,
-    billsec: int,
-    cdr_match_times: list[datetime],
-    *,
-    margin_sec: int = CDR_END_BEFORE_CALL_MARGIN_SEC,
-) -> bool:
-    """True when a finished CDR leg ended before this call could have started."""
-    if billsec <= 0 or not cdr_match_times:
-        return False
-    leg_start = _cdr_start_as_utc(rec_time)
-    leg_end = leg_start + timedelta(seconds=billsec)
-    earliest_start = min(cdr_match_times, key=_as_utc)
-    ct = _as_utc(earliest_start)
-    if leg_end > ct - timedelta(seconds=max(0, margin_sec)):
-        return False
-    best_start_diff = _best_call_vs_cdr_diff(rec_time, cdr_match_times)
-    if best_start_diff <= MAX_RECORDING_START_DIFF_SECONDS:
-        return False
-    return True
 
 
 def _call_vs_cdr_diff_seconds(rec_time: datetime, call_time: datetime) -> float:
@@ -544,41 +258,6 @@ def _row_matches_phone(record: dict, phone: str, *, is_incoming: bool) -> bool:
     return _digits_match(dst, phone) or _digits_match(src, phone)
 
 
-def _linkedids_matching_phone(
-    records: list[dict],
-    *,
-    phone: str,
-    is_incoming: bool,
-) -> set[str]:
-    """linkedids where at least one leg matches the client destination number."""
-    out: set[str] = set()
-    for r in records:
-        linkedid = str(r.get("linkedid") or r.get("linked_id") or "")
-        if not linkedid:
-            continue
-        if _row_matches_phone(r, phone, is_incoming=is_incoming):
-            out.add(linkedid)
-    return out
-
-
-def _outbound_trunk_peer_leg(
-    record: dict,
-    *,
-    phone_linkedids: set[str],
-) -> bool:
-    """Trunk leg on same linkedid as the dial leg — recording often lives here.
-
-    Miko may store outbound CallerID in dst_num on the trunk row (not the
-    callee), so strict phone match would skip the only row with recordingfile.
-    """
-    linkedid = str(record.get("linkedid") or record.get("linked_id") or "")
-    return bool(
-        linkedid
-        and linkedid in phone_linkedids
-        and _is_trunk_leg(record)
-    )
-
-
 def _int_field(record: dict, *keys: str) -> int:
     for key in keys:
         try:
@@ -586,43 +265,6 @@ def _int_field(record: dict, *keys: str) -> int:
         except (TypeError, ValueError):
             continue
     return 0
-
-
-def _linkedid_billsec_map(
-    records: list[dict],
-    *,
-    phone: str,
-    is_incoming: bool,
-) -> dict[str, int]:
-    """Max billsec per linkedid across phone-matching legs (incl. outbound trunk peers)."""
-    phone_linkedids = (
-        _linkedids_matching_phone(records, phone=phone, is_incoming=is_incoming)
-        if not is_incoming
-        else set()
-    )
-    out: dict[str, int] = {}
-    for r in records:
-        linkedid = str(r.get("linkedid") or r.get("linked_id") or "")
-        if not linkedid:
-            continue
-        phone_match = _row_matches_phone(r, phone, is_incoming=is_incoming)
-        trunk_peer = _outbound_trunk_peer_leg(r, phone_linkedids=phone_linkedids)
-        if not phone_match and not trunk_peer:
-            continue
-        bs = _int_field(r, "billsec", "duration")
-        out[linkedid] = max(out.get(linkedid, 0), bs)
-    return out
-
-
-def pbx_recording_definitely_absent(cdr_info: CdrCallInfo) -> bool:
-    """True when Miko finished post-processing and no recording will ever appear."""
-    if not cdr_info.work_completed or cdr_info.has_recording:
-        return False
-    # Answered calls with talk time may still have a file on disk even when the
-    # CDR recording field is empty (WebRTC/trunk leg timing).
-    if cdr_info.was_answered and cdr_info.billsec > 0:
-        return False
-    return True
 
 
 def kommo_call_result_text(result_label: str, call_from_label: Optional[str]) -> str:
@@ -673,24 +315,14 @@ def rank_cdr_records_for_note(
     call_duration_sec: Optional[int] = None,
     call_end_time: Optional[datetime] = None,
     require_recording_match: bool = False,
-    cdr_match_times: Optional[list[datetime]] = None,
 ) -> list[dict]:
     """Rank CDR rows for Kommo sync (best time match first, skip already-used linkedids)."""
     if call_time.tzinfo is None:
         call_time = call_time.replace(tzinfo=timezone.utc)
-    match_times = cdr_match_times or [call_time]
 
     excluded = exclude_linkedids or set()
     max_start_diff = (
         MAX_RECORDING_START_DIFF_SECONDS if require_recording_match else MAX_START_DIFF_SECONDS
-    )
-    phone_linkedids = (
-        _linkedids_matching_phone(records, phone=phone, is_incoming=is_incoming)
-        if not is_incoming
-        else set()
-    )
-    linkedid_billsec = _linkedid_billsec_map(
-        records, phone=phone, is_incoming=is_incoming
     )
     scored: list[tuple[float, dict]] = []
 
@@ -701,71 +333,26 @@ def rank_cdr_records_for_note(
         rec_time = _parse_cdr_start(r.get("start") or r.get("calldate"))
         if not rec_time:
             continue
-        phone_match = _row_matches_phone(r, phone, is_incoming=is_incoming)
-        trunk_peer = _outbound_trunk_peer_leg(r, phone_linkedids=phone_linkedids)
-        if not phone_match and not trunk_peer:
+        diff = _call_vs_cdr_diff_seconds(rec_time, call_time)
+        if diff > max_start_diff:
             continue
-        diff = _best_call_vs_cdr_diff(rec_time, match_times)
-        if require_recording_match:
-            row_max_diff = max_start_diff
-        elif trunk_peer:
-            row_max_diff = MAX_START_DIFF_SECONDS
-        else:
-            row_max_diff = max_start_diff
-        if diff > row_max_diff:
+        if not _row_matches_phone(r, phone, is_incoming=is_incoming):
             continue
 
         billsec = _int_field(r, "billsec", "duration")
-        agg_billsec = linkedid_billsec.get(linkedid, billsec)
-        effective_billsec = agg_billsec if (trunk_peer or billsec <= 0) else billsec
-        if _cdr_leg_ended_before_call(rec_time, effective_billsec, match_times):
-            continue
-        dur_billsec = agg_billsec if agg_billsec > 0 else billsec
-        if (
-            require_recording_match
-            and call_duration_sec
-            and call_duration_sec > 0
-            and dur_billsec > 0
-        ):
-            dur_diff = abs(dur_billsec - call_duration_sec)
+        if require_recording_match and call_duration_sec and call_duration_sec > 0 and billsec > 0:
+            dur_diff = abs(billsec - call_duration_sec)
             tolerance = max(12, min(30, call_duration_sec // 3))
-            long_ring_to_callee = (
-                dur_billsec < call_duration_sec // 2 and call_duration_sec >= 15
-            )
-            client_under_reported = (
-                dur_billsec > call_duration_sec * 1.5 and call_duration_sec >= 10
-            )
-            if (
-                not long_ring_to_callee
-                and not client_under_reported
-                and dur_diff > tolerance
-                and diff > 25
-            ):
+            if dur_diff > tolerance and diff > 25:
                 continue
 
         score = diff
-        if require_recording_match:
-            rec_start_utc = _cdr_start_as_utc(rec_time)
-            earliest_call = min(match_times, key=_as_utc)
-            if rec_start_utc < _as_utc(earliest_call) - timedelta(seconds=8):
-                score += 25
-            if trunk_peer and not phone_match:
-                score += 20
-        elif trunk_peer or (not is_incoming and _is_trunk_leg(r)):
+        if not is_incoming and _is_trunk_leg(r):
             score -= 60
-        score_billsec = dur_billsec if dur_billsec > 0 else billsec
-        if score_billsec > 0:
-            score -= min(score_billsec, 30)
-        if call_duration_sec and call_duration_sec > 0 and score_billsec > 0:
-            dur_diff = abs(score_billsec - call_duration_sec)
-            if (
-                require_recording_match
-                and score_billsec > call_duration_sec * 1.5
-                and call_duration_sec >= 10
-            ):
-                score += min(dur_diff * 0.2, 12)
-            else:
-                score += dur_diff * 0.75
+        if billsec > 0:
+            score -= min(billsec, 30)
+        if call_duration_sec and call_duration_sec > 0 and billsec > 0:
+            score += abs(billsec - call_duration_sec) * 0.75
         if call_end_time is not None:
             try:
                 end_utc = (
@@ -831,28 +418,16 @@ def summarize_cdr_linkedid(
         rows = []
 
     phone_rows = [r for r in rows if _row_matches_phone(r, phone, is_incoming=is_incoming)]
-    if not is_incoming and phone_rows:
-        phone_linkedids = {linkedid}
-        trunk_peer_rows = [
-            r for r in rows if _outbound_trunk_peer_leg(r, phone_linkedids=phone_linkedids)
-        ]
-    else:
-        trunk_peer_rows = []
     trunk_rows = [r for r in phone_rows if _is_trunk_leg(r)] if not is_incoming else []
-    trunk_rows = trunk_rows or trunk_peer_rows
     primary_candidates = trunk_rows or phone_rows or rows
     primary = primary_candidates[0] if primary_candidates else {}
 
     has_recording = any(str(r.get("recording") or "").strip() for r in rows)
-    work_completed = bool(rows) and all(
-        str(r.get("work_completed") or "").strip() == "1" for r in rows
-    )
-    agg_rows = rows if not is_incoming else (phone_rows or rows)
-    billsec = max((_int_field(r, "billsec") for r in agg_rows), default=0)
-    duration = max((_int_field(r, "duration") for r in agg_rows), default=0)
+    billsec = max((_int_field(r, "billsec") for r in phone_rows or rows), default=0)
+    duration = max((_int_field(r, "duration") for r in phone_rows or rows), default=0)
 
     disposition = (primary.get("disposition") or "").upper()
-    for r in agg_rows:
+    for r in phone_rows or rows:
         disp = (r.get("disposition") or "").upper()
         bs = _int_field(r, "billsec")
         if disp == "ANSWERED" and bs > 0:
@@ -889,7 +464,6 @@ def summarize_cdr_linkedid(
         was_answered=was_answered,
         kommo_call_result=kommo_result,
         kommo_call_status=kommo_status,
-        work_completed=work_completed,
     )
 
 
@@ -948,24 +522,13 @@ async def _query_cdr_records(
     call_time: Optional[datetime] = None,
     *,
     wide: bool = False,
-    dst: Optional[str] = None,
-    linkedid: Optional[str] = None,
-    is_incoming: bool = False,
-    sql_window: Optional[tuple[str, str]] = None,
 ) -> list[dict]:
-    kwargs: dict[str, Any] = {"limit": 200}
-    if linkedid:
-        kwargs["linkedid"] = linkedid
-    elif not wide:
+    kwargs: dict[str, Any] = {"limit": 100}
+    if not wide:
         kwargs["ext"] = extension
-    if dst and not linkedid:
-        kwargs["dst"] = dst
-        kwargs["is_incoming"] = is_incoming
-    if call_time is not None and not linkedid:
-        kwargs["start_from"], kwargs["start_to"] = sql_window or _pbx_local_sql_window(call_time)
-    label = "linkedid CDR" if linkedid else ("wide CDR" if wide else "CDR")
-    if dst and not linkedid:
-        label = f"phone CDR dst={dst}"
+    if call_time is not None:
+        kwargs["start_from"], kwargs["start_to"] = _pbx_local_sql_window(call_time)
+    label = "wide CDR" if wide else "CDR"
     try:
         records = await query_cdr(**kwargs)
     except Exception as exc:
@@ -979,44 +542,6 @@ async def _query_cdr_records(
     return records
 
 
-def _merge_cdr_record_batches(batches: list[list[dict]]) -> list[dict]:
-    combined: list[dict] = []
-    seen_row: set[str] = set()
-    for batch in batches:
-        for row in batch:
-            linkedid = str(row.get("linkedid") or row.get("linked_id") or "")
-            start = str(row.get("start") or row.get("calldate") or "")
-            src = str(row.get("src_num") or row.get("src") or "")
-            dst = str(row.get("dst_num") or row.get("dst") or "")
-            key = f"{linkedid}|{start}|{src}|{dst}"
-            if key in seen_row:
-                continue
-            seen_row.add(key)
-            combined.append(row)
-    return combined
-
-
-async def _enrich_records_for_linkedid(
-    query_cdr: Callable[..., Any],
-    linkedid: str,
-    records: list[dict],
-) -> list[dict]:
-    """Load every CDR leg for *linkedid* (trunk row with recording is often missing)."""
-    lid = (linkedid or "").strip()
-    if not lid:
-        return records
-    extra = await _query_cdr_records(
-        query_cdr,
-        "",
-        call_time=None,
-        linkedid=lid,
-        wide=True,
-    )
-    if not extra:
-        return records
-    return _merge_cdr_record_batches([records, extra])
-
-
 async def _list_verified_cdr_candidates(
     *,
     query_cdr: Callable[..., Any],
@@ -1028,22 +553,10 @@ async def _list_verified_cdr_candidates(
     exclude_linkedids: Optional[set[str]] = None,
     call_duration_sec: Optional[int] = None,
     call_end_time: Optional[datetime] = None,
-    answer_time: Optional[datetime] = None,
-    job_created_at: Optional[datetime] = None,
     log_attempt: bool = False,
     require_recording_match: bool = False,
 ) -> tuple[list[dict], list[dict]]:
     """Merge narrow + wide CDR queries, return verified candidates best-first."""
-
-    match_times = build_cdr_match_times(
-        call_time,
-        call_end_time=call_end_time,
-        answer_time=answer_time,
-        call_duration_sec=call_duration_sec,
-        job_created_at=job_created_at,
-    )
-    sql_window = _pbx_local_sql_window_for_times(match_times)
-    query_anchor = match_times[0]
 
     async def _verify(linked_id: str) -> bool:
         if verify_linkedid is None:
@@ -1058,45 +571,30 @@ async def _list_verified_cdr_candidates(
             return False
 
     record_batches: list[list[dict]] = []
-    phone_rows = 0
-    wide_rows = 0
-    narrow_rows = 0
-    if not is_incoming and phone:
-        phone_records = await _query_cdr_records(
-            query_cdr,
-            extension,
-            query_anchor,
-            dst=phone,
-            is_incoming=False,
-            sql_window=sql_window,
-        )
-        phone_rows = len(phone_records)
-        if phone_records:
-            record_batches.append(phone_records)
     if not is_incoming:
-        wide_records = await _query_cdr_records(
-            query_cdr, extension, query_anchor, wide=True, sql_window=sql_window
-        )
-        wide_rows = len(wide_records)
+        wide_records = await _query_cdr_records(query_cdr, extension, call_time, wide=True)
         if wide_records:
             record_batches.append(wide_records)
-    narrow_records = await _query_cdr_records(
-        query_cdr, extension, query_anchor, sql_window=sql_window
-    )
-    narrow_rows = len(narrow_records)
+    narrow_records = await _query_cdr_records(query_cdr, extension, call_time)
     if narrow_records:
         record_batches.append(narrow_records)
 
-    combined = _merge_cdr_record_batches(record_batches)
+    combined: list[dict] = []
+    seen_row: set[str] = set()
+    for batch in record_batches:
+        for row in batch:
+            key = str(row.get("linkedid") or row.get("linked_id") or id(row))
+            if key in seen_row:
+                continue
+            seen_row.add(key)
+            combined.append(row)
 
     if log_attempt:
+        window = _pbx_local_sql_window(call_time)
         print(
             f"[kommo_recording] CDR candidates ext={extension} phone={phone} "
-            f"window={sql_window[0]}..{sql_window[1]} "
-            f"rows_phone={phone_rows} rows_wide={wide_rows} rows_ext={narrow_rows} "
-            f"rows_combined={len(combined)} "
-            f"excluded_linkedids={len(exclude_linkedids or ())} "
-            f"match_times={len(match_times)}",
+            f"window={window[0]}..{window[1]} rows={len(combined)} "
+            f"excluded_linkedids={len(exclude_linkedids or ())}",
             flush=True,
         )
 
@@ -1109,7 +607,6 @@ async def _list_verified_cdr_candidates(
         call_duration_sec=call_duration_sec,
         call_end_time=call_end_time,
         require_recording_match=require_recording_match,
-        cdr_match_times=match_times,
     )
 
     verified: list[dict] = []
@@ -1126,45 +623,6 @@ async def _list_verified_cdr_candidates(
             continue
         verified.append(candidate)
 
-    if log_attempt and ranked and not verified:
-        print(
-            f"[kommo_recording] ranked={len(ranked)} but verified=0 for phone={phone} "
-            f"ext={extension} (linkedid ownership check failed)",
-            flush=True,
-        )
-    elif log_attempt and not ranked:
-        phone_lids = _linkedids_matching_phone(combined, phone=phone, is_incoming=is_incoming)
-        excluded_set = exclude_linkedids or set()
-        blocked = phone_lids & excluded_set if phone_lids else set()
-        if blocked:
-            print(
-                f"[kommo_recording] no ranked CDR for phone={phone}: "
-                f"matching linkedid(s) excluded={sorted(blocked)}",
-                flush=True,
-            )
-        else:
-            best_diff = float("inf")
-            for row in combined:
-                if not _row_matches_phone(row, phone, is_incoming=is_incoming):
-                    continue
-                rec_time = _parse_cdr_start(row.get("start") or row.get("calldate"))
-                if not rec_time:
-                    continue
-                best_diff = min(best_diff, _best_call_vs_cdr_diff(rec_time, match_times))
-            skew = ""
-            if job_created_at and _as_utc(call_time) > _as_utc(job_created_at) + timedelta(seconds=20):
-                skew = f" call_time_skew={(_as_utc(call_time) - _as_utc(job_created_at)).total_seconds():.0f}s"
-            print(
-                f"[kommo_recording] no ranked CDR for phone={phone} ext={extension}"
-                f"{skew}"
-                + (
-                    f" best_start_diff={best_diff:.0f}s"
-                    if best_diff != float("inf")
-                    else ""
-                ),
-                flush=True,
-            )
-
     return verified, combined
 
 
@@ -1179,21 +637,8 @@ async def _pick_cdr_for_note(
     log_attempt: bool,
     exclude_linkedids: Optional[set[str]] = None,
     call_duration_sec: Optional[int] = None,
-    call_end_time: Optional[datetime] = None,
-    answer_time: Optional[datetime] = None,
-    job_created_at: Optional[datetime] = None,
 ) -> tuple[Optional[dict], list[dict]]:
     """Find best CDR row for Kommo note; wide query fallback for originate trunk legs."""
-
-    match_times = build_cdr_match_times(
-        call_time,
-        call_end_time=call_end_time,
-        answer_time=answer_time,
-        call_duration_sec=call_duration_sec,
-        job_created_at=job_created_at,
-    )
-    sql_window = _pbx_local_sql_window_for_times(match_times)
-    query_anchor = match_times[0]
 
     async def _pick_from_records(records: list[dict]) -> Optional[dict]:
         ranked = rank_cdr_records_for_note(
@@ -1203,7 +648,6 @@ async def _pick_cdr_for_note(
             is_incoming=is_incoming,
             exclude_linkedids=exclude_linkedids,
             call_duration_sec=call_duration_sec,
-            cdr_match_times=match_times,
         )
         for candidate in ranked:
             linked_id = str(candidate.get("linkedid") or candidate.get("linked_id") or "")
@@ -1229,9 +673,7 @@ async def _pick_cdr_for_note(
         return None
 
     async def _try_wide() -> tuple[Optional[dict], list[dict]]:
-        wide_records = await _query_cdr_records(
-            query_cdr, extension, query_anchor, wide=True, sql_window=sql_window
-        )
+        wide_records = await _query_cdr_records(query_cdr, extension, call_time, wide=True)
         if not wide_records:
             return None, []
         wide_best = await _pick_from_records(wide_records)
@@ -1251,43 +693,18 @@ async def _pick_cdr_for_note(
             )
         return wide_best, wide_records
 
-    # Originate/outbound: dial leg may only appear under dst_num, not ext filter.
-    if not is_incoming and phone:
-        phone_records = await _query_cdr_records(
-            query_cdr,
-            extension,
-            query_anchor,
-            dst=phone,
-            is_incoming=False,
-            sql_window=sql_window,
-        )
-        if phone_records:
-            phone_best = await _pick_from_records(phone_records)
-            if phone_best:
-                if log_attempt:
-                    linked_id = str(
-                        phone_best.get("linkedid") or phone_best.get("linked_id") or ""
-                    )
-                    print(
-                        f"[kommo_recording] phone CDR matched linkedid={linked_id} "
-                        f"rows={len(phone_records)}",
-                        flush=True,
-                    )
-                return phone_best, phone_records
-
     # Originate/outbound: recording is usually on the trunk leg (outside ext filter).
     if not is_incoming:
         wide_best, wide_records = await _try_wide()
         if wide_best:
             return wide_best, wide_records
 
-    all_records = await _query_cdr_records(
-        query_cdr, extension, query_anchor, sql_window=sql_window
-    )
+    all_records = await _query_cdr_records(query_cdr, extension, call_time)
     if log_attempt:
+        window = _pbx_local_sql_window(call_time)
         print(
             f"[kommo_recording] CDR query ext={extension} phone={phone} "
-            f"window={sql_window[0]}..{sql_window[1]} rows={len(all_records)} "
+            f"window={window[0]}..{window[1]} rows={len(all_records)} "
             f"pbx_utc_offset={_pbx_utc_offset_hours} excluded_linkedids={len(exclude_linkedids or ())}",
             flush=True,
         )
@@ -1309,79 +726,6 @@ async def _pick_cdr_for_note(
     return None, all_records
 
 
-async def _try_resolve_known_linkedid(
-    *,
-    known_linkedid: str,
-    query_cdr: Callable[..., Any],
-    download_recording: Callable[[str, Path], Any],
-    phone: str,
-    is_incoming: bool,
-    was_answered: bool,
-    call_duration_sec: int,
-    call_from_label: Optional[str],
-    answer_time: Optional[datetime],
-    call_time: datetime,
-    work_dir: Path,
-    claim_linkedid: Optional[Callable[[str], bool]] = None,
-    release_linkedid: Optional[Callable[[str], None]] = None,
-) -> Optional[PbxCallResolution]:
-    """Fast path for Kommo worker retries — CDR linkedid already claimed."""
-    linked_id = (known_linkedid or "").strip()
-    if not linked_id:
-        return None
-    claimed = True
-    if claim_linkedid is not None:
-        claimed = bool(claim_linkedid(linked_id))
-        if not claimed:
-            print(
-                f"[kommo_recording] known linkedid={linked_id} — claim held by another job",
-                flush=True,
-            )
-            return None
-    enriched = await _enrich_records_for_linkedid(query_cdr, linked_id, [])
-    cdr_info = summarize_cdr_linkedid(
-        enriched,
-        linked_id,
-        phone=phone,
-        is_incoming=is_incoming,
-        call_from_label=call_from_label,
-    )
-    print(
-        f"[kommo_recording] known linkedid={linked_id} "
-        f"disposition={cdr_info.disposition} billsec={cdr_info.billsec} "
-        f"has_recording={cdr_info.has_recording} work_completed={cdr_info.work_completed}",
-        flush=True,
-    )
-    if pbx_recording_definitely_absent(cdr_info):
-        return PbxCallResolution(
-            None,
-            cdr_info.billsec or cdr_info.duration or None,
-            cdr_info,
-        )
-    recording_path = await _download_linkedid_recording(
-        download_recording=download_recording,
-        linkedid=linked_id,
-        work_dir=work_dir,
-        records=enriched,
-        cdr_info=cdr_info,
-        was_answered=was_answered,
-        call_duration_sec=call_duration_sec,
-        answer_time=answer_time,
-        call_time=call_time,
-    )
-    if recording_path:
-        return PbxCallResolution(
-            recording_path,
-            cdr_info.billsec or cdr_info.duration or None,
-            cdr_info,
-        )
-    return PbxCallResolution(
-        None,
-        cdr_info.billsec or cdr_info.duration or None,
-        cdr_info,
-    )
-
-
 async def resolve_pbx_call(
     *,
     query_cdr: Callable[..., Any],
@@ -1395,42 +739,18 @@ async def resolve_pbx_call(
     call_from_label: Optional[str] = None,
     answer_time: Optional[datetime] = None,
     call_end_time: Optional[datetime] = None,
-    job_created_at: Optional[datetime] = None,
     work_dir: Optional[Path] = None,
     verify_linkedid: Optional[Callable[..., Union[bool, Awaitable[bool]]]] = None,
     exclude_linkedids: Optional[set[str]] = None,
     claim_linkedid: Optional[Callable[[str], bool]] = None,
     release_linkedid: Optional[Callable[[str], None]] = None,
-    known_linkedid: Optional[str] = None,
-    quick_cdr_pass: bool = False,
 ) -> PbxCallResolution:
     """Resolve PBX CDR for Kommo: recording file and/or call note metadata."""
 
     work_dir = work_dir or Path(tempfile.gettempdir()) / "callspire_kommo_recordings"
     work_dir.mkdir(parents=True, exist_ok=True)
 
-    if known_linkedid:
-        fast = await _try_resolve_known_linkedid(
-            known_linkedid=known_linkedid,
-            query_cdr=query_cdr,
-            download_recording=download_recording,
-            phone=phone,
-            is_incoming=is_incoming,
-            was_answered=was_answered,
-            call_duration_sec=call_duration_sec,
-            call_from_label=call_from_label,
-            answer_time=answer_time,
-            call_time=call_time,
-            work_dir=work_dir,
-            claim_linkedid=claim_linkedid,
-            release_linkedid=release_linkedid,
-        )
-        if fast is not None:
-            return fast
-
-    lookup_delays = [0] if quick_cdr_pass else CDR_LOOKUP_DELAYS
-
-    for attempt, delay in enumerate(lookup_delays):
+    for attempt, delay in enumerate(CDR_LOOKUP_DELAYS):
         if delay > 0:
             await asyncio.sleep(delay)
             print(
@@ -1448,11 +768,23 @@ async def resolve_pbx_call(
             exclude_linkedids=exclude_linkedids,
             call_duration_sec=call_duration_sec or None,
             call_end_time=call_end_time,
-            answer_time=answer_time,
-            job_created_at=job_created_at,
             log_attempt=(attempt == 0),
             require_recording_match=True,
         )
+        if not candidates:
+            candidates, all_records = await _list_verified_cdr_candidates(
+                query_cdr=query_cdr,
+                verify_linkedid=verify_linkedid,
+                extension=extension,
+                phone=phone,
+                call_time=call_time,
+                is_incoming=is_incoming,
+                exclude_linkedids=exclude_linkedids,
+                call_duration_sec=call_duration_sec or None,
+                call_end_time=call_end_time,
+                log_attempt=False,
+                require_recording_match=False,
+            )
         if not candidates:
             continue
 
@@ -1472,11 +804,8 @@ async def resolve_pbx_call(
                     )
                     continue
 
-            enriched_records = await _enrich_records_for_linkedid(
-                query_cdr, linked_id, all_records
-            )
             cdr_info = summarize_cdr_linkedid(
-                enriched_records,
+                all_records,
                 linked_id,
                 phone=phone,
                 is_incoming=is_incoming,
@@ -1489,109 +818,100 @@ async def resolve_pbx_call(
                 flush=True,
             )
 
-            if pbx_recording_definitely_absent(cdr_info):
+            if not cdr_info.was_answered:
+                return PbxCallResolution(
+                    None,
+                    cdr_info.billsec or cdr_info.duration or None,
+                    cdr_info,
+                )
+            if not cdr_info.has_recording and int(cdr_info.billsec or 0) < 3:
                 return PbxCallResolution(
                     None,
                     cdr_info.billsec or cdr_info.duration or None,
                     cdr_info,
                 )
 
-            if not cdr_info.has_recording:
-                print(
-                    f"[kommo_recording] linkedid={linked_id} recording flag not set in CDR batch "
-                    f"— trying direct download by linkedid",
-                    flush=True,
-                )
+            recording_ok = False
+            for rec_attempt, rec_delay in enumerate(PBX_CDR_RETRY_DELAYS):
+                if rec_delay > 0:
+                    await asyncio.sleep(rec_delay)
+                    if rec_attempt > 0:
+                        msg = (
+                            f"[kommo_recording] recording download retry {rec_attempt} "
+                            f"linkedid={cdr_info.linkedid}"
+                        )
+                        log.info(msg)
+                        print(msg, flush=True)
 
-            recording_path = await _download_linkedid_recording(
-                download_recording=download_recording,
-                linkedid=linked_id,
-                work_dir=work_dir,
-                records=enriched_records,
-                cdr_info=cdr_info,
-                was_answered=was_answered,
-                call_duration_sec=call_duration_sec,
-                answer_time=answer_time,
-                call_time=call_time,
-            )
-            if recording_path:
+                safe_id = cdr_info.linkedid.replace("/", "_").replace("\\", "_")
+                dest_hint = work_dir / f".download_{safe_id}"
+                try:
+                    ok = await download_recording(cdr_info.linkedid, dest_hint)
+                except Exception as exc:
+                    log.warning("recording download failed: %s", exc)
+                    print(
+                        f"[kommo_recording] download failed linkedid={cdr_info.linkedid}: {exc}",
+                        flush=True,
+                    )
+                    continue
+                dest = find_downloaded_recording(work_dir, cdr_info.linkedid)
+                if not ok or dest is None:
+                    print(
+                        f"[kommo_recording] download empty linkedid={cdr_info.linkedid}",
+                        flush=True,
+                    )
+                    continue
+
                 cdr_duration = cdr_info.billsec or cdr_info.duration or None
-                return PbxCallResolution(recording_path, cdr_duration, cdr_info)
+                file_duration = recording_file_duration_seconds(str(dest))
+                compare_duration = call_duration_sec
+                if file_duration and file_duration > compare_duration:
+                    compare_duration = file_duration
+                acceptable, reason = is_pbx_recording_acceptable(
+                    was_answered=bool(cdr_info.was_answered),
+                    call_duration_sec=compare_duration,
+                    answer_time=answer_time,
+                    call_time=call_time,
+                    pbx_path=str(dest),
+                    cdr_duration_sec=file_duration or cdr_duration,
+                )
+                if acceptable:
+                    note_duration = file_duration or cdr_duration
+                    print(
+                        f"[kommo_recording] recording ready linkedid={cdr_info.linkedid} "
+                        f"path={dest.name} bytes={dest.stat().st_size} "
+                        f"file_sec={file_duration} billsec={cdr_duration}",
+                        flush=True,
+                    )
+                    return PbxCallResolution(str(dest), note_duration, cdr_info)
 
-            last_lookup_attempt = attempt >= len(lookup_delays) - 1
-            if last_lookup_attempt:
+                log.info("PBX recording rejected: %s", reason)
                 print(
-                    f"[kommo_recording] linkedid={linked_id} recording unavailable "
-                    f"— Kommo call note only",
+                    f"[kommo_recording] rejected linkedid={cdr_info.linkedid}: {reason}",
                     flush=True,
                 )
-                return PbxCallResolution(
-                    None,
-                    cdr_info.billsec or cdr_info.duration or None,
-                    cdr_info,
+                try:
+                    dest.unlink(missing_ok=True)
+                except OSError:
+                    pass
+
+            if cdr_info.was_answered and (
+                cdr_info.has_recording or int(cdr_info.billsec or 0) >= 3
+            ):
+                billsec = cdr_info.billsec or cdr_info.duration or None
+                print(
+                    f"[kommo_recording] linkedid={linked_id} matched but recording not ready "
+                    f"(keeping claim for job retry)",
+                    flush=True,
                 )
+                return PbxCallResolution(None, billsec, cdr_info)
+
             if claimed and release_linkedid is not None:
                 release_linkedid(linked_id)
             print(
                 f"[kommo_recording] linkedid={linked_id} unusable — trying next CDR candidate",
                 flush=True,
             )
-
-    note_row, note_records = await _pick_cdr_for_note(
-        query_cdr=query_cdr,
-        verify_linkedid=verify_linkedid,
-        extension=extension,
-        phone=phone,
-        call_time=call_time,
-        is_incoming=is_incoming,
-        log_attempt=True,
-        exclude_linkedids=exclude_linkedids,
-        call_duration_sec=call_duration_sec or None,
-        call_end_time=call_end_time,
-        answer_time=answer_time,
-        job_created_at=job_created_at,
-    )
-    if note_row:
-        linked_id = str(note_row.get("linkedid") or note_row.get("linked_id") or "")
-        if linked_id:
-            claimed = True
-            if claim_linkedid is not None:
-                claimed = bool(claim_linkedid(linked_id))
-            if claimed:
-                note_enriched = await _enrich_records_for_linkedid(
-                    query_cdr, linked_id, note_records
-                )
-                cdr_info = summarize_cdr_linkedid(
-                    note_enriched,
-                    linked_id,
-                    phone=phone,
-                    is_incoming=is_incoming,
-                    call_from_label=call_from_label,
-                )
-                print(
-                    f"[kommo_recording] CDR note fallback linkedid={linked_id} "
-                    f"disposition={cdr_info.disposition} result={cdr_info.kommo_call_result}",
-                    flush=True,
-                )
-                recording_path = await _download_linkedid_recording(
-                    download_recording=download_recording,
-                    linkedid=linked_id,
-                    work_dir=work_dir,
-                    records=note_enriched,
-                    cdr_info=cdr_info,
-                    was_answered=was_answered,
-                    call_duration_sec=call_duration_sec,
-                    answer_time=answer_time,
-                    call_time=call_time,
-                )
-                if recording_path:
-                    cdr_duration = cdr_info.billsec or cdr_info.duration or None
-                    return PbxCallResolution(recording_path, cdr_duration, cdr_info)
-                return PbxCallResolution(
-                    None,
-                    cdr_info.billsec or cdr_info.duration or None,
-                    cdr_info,
-                )
 
     print(f"[kommo_recording] no CDR match for {phone} ext={extension}", flush=True)
     return PbxCallResolution(None, None, None)

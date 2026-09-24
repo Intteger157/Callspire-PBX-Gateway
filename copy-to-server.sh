@@ -9,5 +9,6 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 
 echo "Copying Kommo bundle from $DIR to $TARGET ..."
 scp "$DIR"/*.py "$TARGET/"
+scp "$DIR/templates/admin.html" "$TARGET/templates/"
 scp "$DIR/templates/admin_kommo.html" "$TARGET/templates/"
-echo "Done. Apply APP_PY_PATCH.md to app.py on server if needed, then restart gateway."
+echo "Done. Restart gateway after deploy (mobile releases: /admin/mobile-releases)."

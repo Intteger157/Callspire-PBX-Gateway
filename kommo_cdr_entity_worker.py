@@ -57,9 +57,10 @@ def _cdr_call_has_active_kommo_job(**kwargs: Any) -> bool:
 
 
 def configure(cfg: dict[str, Any] | None = None) -> None:
-    global POLL_SECONDS, MIN_CALL_AGE_SECONDS, LOOKBACK_MINUTES
+    global _cfg, POLL_SECONDS, MIN_CALL_AGE_SECONDS, LOOKBACK_MINUTES
     if not cfg:
         return
+    _cfg = cfg
     POLL_SECONDS = max(
         10, min(300, int(cfg.get("kommo_cdr_entity_poll_seconds") or POLL_SECONDS))
     )

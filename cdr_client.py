@@ -372,6 +372,30 @@ def linkedid_involves_extension(
         conn.close()
 
 
+def _recording_row_is_trunk(row: sqlite3.Row) -> bool:
+    keys = row.keys()
+    trunk = str((row["to_account"] if "to_account" in keys else "") or "").upper()
+    return "TRUNK" in trunk or trunk.startswith("SIP-")
+
+
+def _recording_row_billsec(row: sqlite3.Row) -> int:
+    try:
+        return int(row["billsec"] or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _pick_miko_recording_row(rows: list[sqlite3.Row]) -> sqlite3.Row | None:
+    """Pick the PBX mixdown leg Miko intended for CDR playback (trunk on outbound)."""
+    if not rows:
+        return None
+    if len(rows) == 1:
+        return rows[0]
+    trunk_rows = [r for r in rows if _recording_row_is_trunk(r)]
+    pool = trunk_rows if trunk_rows else rows
+    return max(pool, key=_recording_row_billsec)
+
+
 def find_recording_path(
     cdr_db_path: str,
     recording_base: str,
@@ -386,6 +410,11 @@ def find_recording_path(
     /storage/usbdisk1/...).  On the host the actual prefix is
     typically /var/spool/mikopbx.  We prepend `recording_base` to
     turn the DB path into an absolute host path.
+
+    Originate / WebRTC calls often have multiple CDR legs with separate
+    recordingfile values (softphone leg + trunk).  Desktop playback uses
+    the trunk mix — taking ORDER BY start DESC picks the WebRTC leg and
+    produces slow/wrong audio in Kommo.
     """
     resolved = _host_cdr_sqlite_path(
         cdr_db_path, docker_container or "", docker_db_path or ""
@@ -394,13 +423,13 @@ def find_recording_path(
     conn = sqlite3.connect(f"file:{resolved}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
     try:
-        row = conn.execute(
-            "SELECT recordingfile FROM cdr_general "
-            "WHERE linkedid = ? AND recordingfile IS NOT NULL AND recordingfile != '' "
-            "ORDER BY start DESC LIMIT 1",
+        rows = conn.execute(
+            "SELECT * FROM cdr_general "
+            "WHERE linkedid = ? AND recordingfile IS NOT NULL AND recordingfile != ''",
             (linkedid,),
-        ).fetchone()
+        ).fetchall()
 
+        row = _pick_miko_recording_row(list(rows))
         if row is None:
             return None
 

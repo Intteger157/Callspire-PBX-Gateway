@@ -24,6 +24,19 @@ def digits_only(value: str | None) -> str:
     return "".join(c for c in value if c.isdigit())
 
 
+def phones_match_for_dedup(a: str | None, b: str | None) -> bool:
+    """Same caller on web + mobile may send +447… vs 447… — treat as one call."""
+    da = digits_only(a)
+    db = digits_only(b)
+    if not da or not db:
+        return False
+    if da == db:
+        return True
+    if len(da) >= 10 and len(db) >= 10 and da[-10:] == db[-10:]:
+        return True
+    return False
+
+
 def should_convert_russian_trunk_eight_to_seven(digits: str, user_typed_plus: bool) -> bool:
     if user_typed_plus:
         return False

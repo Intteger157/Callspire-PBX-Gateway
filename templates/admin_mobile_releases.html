@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Mobile releases — PBX Gateway</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; }
+    label { display: block; margin-top: 1rem; font-weight: 600; }
+    input[type=text], input[type=password] { width: 100%; padding: 0.5rem; margin-top: 0.25rem; }
+    button { margin-top: 1.25rem; padding: 0.6rem 1rem; }
+    .muted { color: #666; font-size: 0.9rem; }
+    .ok { color: #0a7; }
+    .err { color: #c00; }
+  </style>
+</head>
+<body>
+  <h1>Mobile app updates (GitHub proxy)</h1>
+  <p class="muted">Private GitHub Releases → IGCaller APK for authenticated mobile users.</p>
+
+  <form id="cfg">
+    <label><input type="checkbox" id="enabled" {% if config.enabled %}checked{% endif %} /> Enabled</label>
+    <label>GitHub owner<input type="text" id="github_owner" value="{{ config.github_owner }}" placeholder="IntermarkGlobal" /></label>
+    <label>GitHub repo<input type="text" id="github_repo" value="{{ config.github_repo }}" placeholder="IntermarkCaller" /></label>
+    <label>Asset name<input type="text" id="asset_name" value="{{ config.asset_name }}" placeholder="IGCaller.apk" /></label>
+    <label>GitHub token (PAT, repo read) {% if config.token_configured %}<span class="ok">configured via {{ config.token_source }}</span>{% endif %}
+      <input type="password" id="github_token" placeholder="Leave blank to keep current token" autocomplete="off" />
+    </label>
+    <button type="submit">Save</button>
+    <button type="button" id="test">Test latest release</button>
+  </form>
+  <pre id="out" class="muted"></pre>
+  <p><a href="/admin">Back to admin</a></p>
+
+  <script>
+    const out = document.getElementById('out');
+    const token = localStorage.getItem('pbx_admin_jwt') || '';
+
+    async function api(path, opts = {}) {
+      const res = await fetch(path, {
+        ...opts,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: 'Bearer ' + token } : {}),
+          ...(opts.headers || {}),
+        },
+      });
+      const text = await res.text();
+      let data;
+      try { data = JSON.parse(text); } catch { data = text; }
+      if (!res.ok) throw new Error(typeof data === 'string' ? data : JSON.stringify(data));
+      return data;
+    }
+
+    document.getElementById('cfg').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      out.textContent = 'Saving…';
+      try {
+        const body = {
+          enabled: document.getElementById('enabled').checked,
+          github_owner: document.getElementById('github_owner').value.trim(),
+          github_repo: document.getElementById('github_repo').value.trim(),
+          asset_name: document.getElementById('asset_name').value.trim() || 'IGCaller.apk',
+        };
+        const tok = document.getElementById('github_token').value.trim();
+        if (tok) body.github_token = tok;
+        const data = await api('/api/admin/mobile-releases/config', { method: 'POST', body: JSON.stringify(body) });
+        out.textContent = JSON.stringify(data, null, 2);
+      } catch (err) {
+        out.textContent = 'Error: ' + err.message;
+        out.className = 'err';
+      }
+    });
+
+    document.getElementById('test').addEventListener('click', async () => {
+      out.textContent = 'Testing GitHub…';
+      try {
+        const data = await api('/api/admin/mobile-releases/test');
+        out.textContent = JSON.stringify(data, null, 2);
+        out.className = 'ok';
+      } catch (err) {
+        out.textContent = 'Error: ' + err.message;
+        out.className = 'err';
+      }
+    });
+  </script>
+</body>
+</html>

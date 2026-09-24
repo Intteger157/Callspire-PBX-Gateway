@@ -12,83 +12,73 @@ from typing import Any, Awaitable, Callable, Optional
 
 import kommo_jobs_db
 from kommo_crm import KommoCrmClient, ProcessCallOutcome
-from kommo_recording import (
-    resolve_pbx_call,
-    JOB_RETRY_WAITS_SEC,
-    pbx_recording_definitely_absent,
-)
+from kommo_recording import resolve_pbx_call, MAX_PBX_RECORDING_JOB_RETRIES, JOB_RETRY_WAITS_SEC
 
 log = logging.getLogger("kommo_call_worker")
 
-WORKER_COUNT = 10
-MAX_RECORDING_RETRIES = 6
-QUEUE_HIGH_WATERMARK = 15
-MAX_RECORDING_RETRIES_CAP = 12
-JOBS_RETENTION_DAYS = 7
-RETENTION_CLEANUP_INTERVAL_SEC = 3600
+
+def _pbx_recording_still_expected(payload: dict[str, Any], cdr: Any) -> bool:
+    if not bool(payload.get("enable_recording_upload", True)):
+        return False
+    if not cdr.was_answered:
+        return False
+    if cdr.has_recording:
+        return True
+    return int(cdr.billsec or 0) >= 3
+
+
+def _apply_pbx_cdr_to_payload(payload: dict[str, Any], cdr: Any) -> tuple[Any, Any, int]:
+    """Merge PBX CDR truth into job payload for Kommo upload and desktop status sync."""
+    payload["pbx_linkedid"] = cdr.linkedid
+    billsec = int(cdr.billsec or 0)
+    if billsec <= 0 and cdr.was_answered and int(cdr.duration or 0) > 0:
+        billsec = int(cdr.duration)
+    payload["pbx_was_answered"] = bool(cdr.was_answered)
+    payload["was_answered"] = bool(cdr.was_answered)
+    payload["pbx_duration_seconds"] = billsec if cdr.was_answered else 0
+    if cdr.was_answered:
+        if billsec > 0:
+            payload["duration_seconds"] = billsec
+    else:
+        payload["duration_seconds"] = 0
+    if cdr.caller_id and not payload.get("call_from_label"):
+        payload["call_from_label"] = cdr.caller_id
+    return cdr.kommo_call_result, cdr.kommo_call_status, billsec
+
+
+WORKER_COUNT = 3
 CLIENT_RECORDING_WAIT_SECONDS = 360
 RECORDINGS_DIR = Path(__file__).resolve().parent / "kommo_upload_recordings"
+# Web + mobile on one extension: web may report queue CANCEL as missed before mobile answers.
+INBOUND_UNANSWERED_DEFER_WAITS_SEC = (15, 15, 15)
+INBOUND_UNANSWERED_DEFER_MAX = len(INBOUND_UNANSWERED_DEFER_WAITS_SEC)
 
 _running = False
 _tasks: list[asyncio.Task] = []
+_cfg: dict[str, Any] = {}
 
 
 def configure(cfg: dict[str, Any] | None = None) -> None:
-    """Apply Kommo worker settings from config.yaml (safe to call multiple times)."""
-    global WORKER_COUNT, MAX_RECORDING_RETRIES, QUEUE_HIGH_WATERMARK, JOBS_RETENTION_DAYS
+    """Apply gateway config (called from register_kommo_routes before workers start)."""
+    global _cfg, WORKER_COUNT, CLIENT_RECORDING_WAIT_SECONDS
     if not cfg:
         return
-    WORKER_COUNT = max(1, min(32, int(cfg.get("kommo_worker_count") or WORKER_COUNT)))
-    MAX_RECORDING_RETRIES = max(
-        2, min(20, int(cfg.get("kommo_max_recording_retries") or MAX_RECORDING_RETRIES))
-    )
-    QUEUE_HIGH_WATERMARK = max(
-        5, int(cfg.get("kommo_queue_high_watermark") or QUEUE_HIGH_WATERMARK)
-    )
-    JOBS_RETENTION_DAYS = max(
-        1, min(90, int(cfg.get("kommo_jobs_retention_days") or JOBS_RETENTION_DAYS))
-    )
+    _cfg = cfg
+    try:
+        WORKER_COUNT = max(1, min(32, int(cfg.get("kommo_worker_count") or WORKER_COUNT)))
+    except (TypeError, ValueError):
+        pass
+    retries = cfg.get("kommo_max_recording_retries")
+    if retries is not None:
+        try:
+            import kommo_recording
 
-
-def _effective_max_recording_retries() -> int:
-    """Add extra retries when many jobs are waiting — typical during call peaks."""
-    pending = kommo_jobs_db.count_pending_recording_jobs(include_processing=True)
-    extra = max(0, (pending - QUEUE_HIGH_WATERMARK) // 5) * 2
-    return min(MAX_RECORDING_RETRIES + extra, MAX_RECORDING_RETRIES_CAP)
-
-
-def _retry_wait_seconds(retry_index: int) -> int:
-    waits = JOB_RETRY_WAITS_SEC
-    idx = min(max(0, retry_index), len(waits) - 1)
-    return waits[idx]
-
-
-def _schedule_recording_retry(
-    job_id: str,
-    payload: dict[str, Any],
-    *,
-    reason: str,
-    log_msg: str,
-) -> bool:
-    """Requeue job for another Miko CDR/recording attempt. Returns False if cap reached."""
-    retry = int(payload.get("pbx_recording_retry") or 0)
-    max_retries = _effective_max_recording_retries()
-    if retry >= max_retries:
-        return False
-    payload["pbx_recording_retry"] = retry + 1
-    wait_sec = _retry_wait_seconds(retry)
-    payload["retry_after"] = (
-        datetime.now(timezone.utc) + timedelta(seconds=wait_sec)
-    ).isoformat()
-    kommo_jobs_db.update_job(
-        job_id,
-        status="queued",
-        payload_json=payload,
-        reason=f"{reason} (retry {retry + 1}/{max_retries}, next in {wait_sec}s)",
-    )
-    log.info(log_msg)
-    print(log_msg, flush=True)
-    return True
+            kommo_recording.MAX_PBX_RECORDING_JOB_RETRIES = max(
+                1,
+                min(20, int(retries)),
+            )
+        except (TypeError, ValueError):
+            pass
 
 
 def build_dedup_key(extension: str, phone: str, call_time: str, session_id: Optional[str]) -> str:
@@ -118,67 +108,6 @@ def _sha256_file(path: str) -> Optional[str]:
     return digest.hexdigest()
 
 
-def _effective_was_answered(
-    payload: dict[str, Any], *, pbx_billsec: Optional[int] = None
-) -> bool:
-    """Answered = client flag, answer_time, or PBX CDR billsec (not client ring timer)."""
-    if bool(payload.get("was_answered")):
-        return True
-    if payload.get("answer_time"):
-        return True
-    if pbx_billsec is not None and int(pbx_billsec) >= 3:
-        return True
-    return False
-
-
-def _should_wait_for_pbx_cdr(
-    payload: dict[str, Any], *, pbx_billsec: Optional[int] = None
-) -> bool:
-    """Wait for Miko CDR before uploading when recording may exist (CDR is source of truth)."""
-    if not bool(payload.get("enable_recording_upload", True)):
-        return False
-    if _effective_was_answered(payload, pbx_billsec=pbx_billsec):
-        return True
-    dur = int(payload.get("duration_seconds") or 0)
-    # Outbound client timer includes ring time — need CDR to know real talk / recording.
-    return dur >= 8 and not bool(payload.get("is_incoming"))
-
-
-def _recording_upload_wanted(
-    payload: dict[str, Any], *, pbx_billsec: Optional[int] = None
-) -> bool:
-    if not bool(payload.get("enable_recording_upload", True)):
-        return False
-    return _effective_was_answered(payload, pbx_billsec=pbx_billsec)
-
-
-def _apply_cdr_truth_to_payload(
-    payload: dict[str, Any],
-    cdr: Any,
-) -> None:
-    """Overwrite client timing with PBX CDR (client duration often includes ring time)."""
-    client_dur = int(payload.get("duration_seconds") or 0)
-    if client_dur > 0 and "client_duration_seconds" not in payload:
-        payload["client_duration_seconds"] = client_dur
-    cdr_billsec = int(getattr(cdr, "billsec", 0) or 0)
-    cdr_answered = bool(getattr(cdr, "was_answered", False))
-    payload["pbx_billsec"] = cdr_billsec
-    payload["was_answered"] = cdr_answered or _effective_was_answered(
-        payload, pbx_billsec=cdr_billsec
-    )
-    if cdr_billsec > 0:
-        payload["duration_seconds"] = cdr_billsec
-    elif not cdr_answered:
-        payload["duration_seconds"] = 0
-    if client_dur >= 10 and cdr_billsec <= 1 and not cdr_answered:
-        print(
-            f"[kommo_call_worker] client duration {client_dur}s but CDR "
-            f"billsec={cdr_billsec} disposition={getattr(cdr, 'disposition', '')} "
-            f"— using PBX truth",
-            flush=True,
-        )
-
-
 async def start_workers(
     *,
     get_session_for_extension: Callable[[str], Awaitable[Optional[dict[str, Any]]]],
@@ -199,7 +128,6 @@ async def start_workers(
         msg = f"[kommo_call_worker] Requeued {recovered} orphaned processing job(s)"
         log.info(msg)
         print(msg, flush=True)
-    run_retention_cleanup()
     for i in range(WORKER_COUNT):
         _tasks.append(
             asyncio.create_task(
@@ -213,15 +141,7 @@ async def start_workers(
                 name=f"kommo-worker-{i}",
             )
         )
-    _tasks.append(
-        asyncio.create_task(_retention_cleanup_loop(), name="kommo-retention-cleanup")
-    )
-    msg = (
-        f"[kommo_call_worker] Started {WORKER_COUNT} Kommo call upload workers "
-        f"(max_recording_retries={MAX_RECORDING_RETRIES}, "
-        f"queue_high_watermark={QUEUE_HIGH_WATERMARK}, "
-        f"job_retention_days={JOBS_RETENTION_DAYS})"
-    )
+    msg = f"[kommo_call_worker] Started {WORKER_COUNT} Kommo call upload workers"
     log.info(msg)
     print(msg, flush=True)
 
@@ -234,34 +154,6 @@ async def stop_workers() -> None:
     if _tasks:
         await asyncio.gather(*_tasks, return_exceptions=True)
     _tasks = []
-
-
-def run_retention_cleanup() -> int:
-    """Delete Kommo call jobs older than configured retention (default 7 days)."""
-    removed = kommo_jobs_db.cleanup_old_jobs(days=JOBS_RETENTION_DAYS)
-    if removed:
-        msg = (
-            f"[kommo_call_worker] retention cleanup: removed {removed} job(s) "
-            f"older than {JOBS_RETENTION_DAYS} day(s)"
-        )
-        log.info(msg)
-        print(msg, flush=True)
-    return removed
-
-
-async def _retention_cleanup_loop() -> None:
-    while _running:
-        try:
-            run_retention_cleanup()
-        except asyncio.CancelledError:
-            break
-        except Exception as exc:
-            log.exception("Kommo retention cleanup error: %s", exc)
-            print(f"[kommo_call_worker] retention cleanup error: {exc}", flush=True)
-        try:
-            await asyncio.sleep(RETENTION_CLEANUP_INTERVAL_SEC)
-        except asyncio.CancelledError:
-            break
 
 
 async def _worker_loop(
@@ -328,39 +220,23 @@ async def _process_job(
         token_refresher=refresh_token,
     )
 
+    keep_recording_files = False
     try:
         audio_path: Optional[str] = job.get("recording_path")
-        upload_source: Optional[str] = None
+        if audio_path and not Path(audio_path).is_file():
+            print(
+                f"[kommo_call_worker] job {job_id}: recording file missing on disk "
+                f"({audio_path}) — will re-fetch from PBX if needed",
+                flush=True,
+            )
+            audio_path = None
+            kommo_jobs_db.update_job(job_id, recording_path=None)
+
+        upload_source: Optional[str] = job.get("upload_source")
 
         client_recording = bool(payload.get("client_recording_enabled"))
         connection_slot = (payload.get("connection_slot") or "main").lower()
         prefer_miko = connection_slot != "secondary" and not client_recording
-
-        if prefer_miko and not audio_path and payload.get("admin_reupload"):
-            sibling = kommo_jobs_db.find_miko_recording_sibling_job(
-                extension,
-                (payload.get("phone") or "").strip(),
-                exclude_job_id=job_id,
-            )
-            if sibling:
-                sib_payload = sibling.get("payload") or {}
-                sib_lid = (sib_payload.get("pbx_linkedid") or "").strip()
-                if not sib_lid:
-                    rec_name = Path(str(sibling.get("recording_path") or "")).stem
-                    if rec_name.startswith("mikopbx_"):
-                        sib_lid = rec_name[len("mikopbx_") :]
-                sib_path = (sibling.get("recording_path") or "").strip()
-                if sib_lid and not (payload.get("pbx_linkedid") or "").strip():
-                    payload["pbx_linkedid"] = sib_lid
-                    kommo_jobs_db.update_job(job_id, payload_json=payload)
-                if sib_path and Path(sib_path).is_file():
-                    audio_path = sib_path
-                    upload_source = sibling.get("upload_source") or "miko_pbx"
-                    print(
-                        f"[kommo_call_worker] job {job_id}: admin reupload reusing Miko file "
-                        f"from sibling job {sibling['id']} linkedid={sib_lid or '-'}",
-                        flush=True,
-                    )
 
         if client_recording and not audio_path:
             kommo_jobs_db.update_job(job_id, status="waiting_recording")
@@ -386,37 +262,19 @@ async def _process_job(
         call_result_override: Optional[str] = None
         call_status_override: Optional[int] = None
         cdr_note_created = False
-        cdr_may_have_recording = False
-        recording_definitely_absent = False
         pbx_billsec: Optional[int] = None
 
         if audio_path and Path(audio_path).is_file():
-            upload_source = "client"
+            if not upload_source:
+                upload_source = "client" if client_recording else "miko_pbx"
         elif prefer_miko:
             call_time = _parse_call_time(payload.get("call_time") or "")
             answer_time_raw = payload.get("answer_time")
             answer_time = _parse_call_time(answer_time_raw) if answer_time_raw else None
             call_end_raw = payload.get("call_end_time")
             call_end_time = _parse_call_time(call_end_raw) if call_end_raw else None
-            client_duration = int(payload.get("duration_seconds") or 0)
-            job_created_at = _parse_call_time(job.get("created_at") or "")
-            if job_created_at and call_time > job_created_at + timedelta(seconds=20):
-                if call_end_time is None:
-                    call_end_time = job_created_at
-                if answer_time is None and client_duration > 0:
-                    answer_time = job_created_at - timedelta(seconds=client_duration)
-                print(
-                    f"[kommo_call_worker] job {job_id}: client call_time is "
-                    f"{(call_time - job_created_at).total_seconds():.0f}s after job enqueue "
-                    f"— using job time anchors for CDR match",
-                    flush=True,
-                )
-            elif call_end_time is None and client_duration > 0:
-                call_end_time = call_time + timedelta(seconds=client_duration)
             used_linkedids = kommo_jobs_db.list_used_pbx_linkedids(
-                extension,
-                exclude_job_id=job_id,
-                phone=(payload.get("phone") or "").strip(),
+                extension, exclude_job_id=job_id
             )
             if used_linkedids:
                 print(
@@ -468,21 +326,30 @@ async def _process_job(
                 call_from_label=payload.get("call_from_label"),
                 answer_time=answer_time,
                 call_end_time=call_end_time,
-                job_created_at=job_created_at,
                 work_dir=RECORDINGS_DIR / job_id,
                 verify_linkedid=verify_linkedid,
                 exclude_linkedids=used_linkedids,
                 claim_linkedid=_claim_linkedid,
                 release_linkedid=_release_linkedid,
-                known_linkedid=(payload.get("pbx_linkedid") or "").strip() or None,
-                quick_cdr_pass=int(payload.get("pbx_recording_retry") or 0) > 0,
             )
             if resolution.cdr_info:
-                payload["pbx_linkedid"] = resolution.cdr_info.linkedid
-                if resolution.cdr_info.billsec > 0:
-                    pbx_billsec = resolution.cdr_info.billsec
-                elif resolution.cdr_info.duration > 0:
-                    pbx_billsec = resolution.cdr_info.duration
+                cdr = resolution.cdr_info
+                call_result_override, call_status_override, billsec = _apply_pbx_cdr_to_payload(
+                    payload, cdr
+                )
+                if billsec > 0:
+                    pbx_billsec = billsec
+                kommo_jobs_db.update_job(job_id, payload_json=payload)
+                if not resolution.recording_path:
+                    if not _pbx_recording_still_expected(payload, cdr):
+                        cdr_note_created = True
+                print(
+                    f"[kommo_call_worker] job {job_id}: CDR "
+                    f"linkedid={cdr.linkedid} disposition={cdr.disposition} "
+                    f"answered={cdr.was_answered} billsec={billsec} "
+                    f"result={cdr.kommo_call_result}",
+                    flush=True,
+                )
             if resolution.recording_path:
                 audio_path = resolution.recording_path
                 upload_source = "miko_pbx"
@@ -496,75 +363,99 @@ async def _process_job(
                     upload_source=upload_source,
                     payload_json=payload,
                 )
-            elif resolution.cdr_info:
+            elif resolution.cdr_info is not None and not resolution.recording_path:
                 cdr = resolution.cdr_info
-                if cdr.billsec > 0:
-                    pbx_billsec = cdr.billsec
-                recording_wanted_now = _recording_upload_wanted(
-                    payload, pbx_billsec=pbx_billsec
-                )
-                cdr_may_have_recording = cdr.was_answered and (
-                    cdr.has_recording or cdr.billsec > 0
-                )
-                recording_definitely_absent = pbx_recording_definitely_absent(cdr)
-                if recording_definitely_absent:
-                    if cdr_may_have_recording:
-                        print(
-                            f"[kommo_call_worker] job {job_id}: CDR work_completed=1 "
-                            f"without recordingfile (linkedid={cdr.linkedid}) — skipping retries",
-                            flush=True,
-                        )
-                    cdr_may_have_recording = False
-                if recording_wanted_now and cdr_may_have_recording and not resolution.recording_path:
-                    if _schedule_recording_retry(
-                        job_id,
-                        payload,
-                        reason="Waiting for Miko recording",
-                        log_msg=(
-                            f"[kommo_call_worker] job {job_id}: CDR matched but recording not ready "
-                            f"(queue={kommo_jobs_db.count_pending_recording_jobs()})"
-                        ),
-                    ):
-                        return
-                _apply_cdr_truth_to_payload(payload, cdr)
-                payload["pbx_linkedid"] = cdr.linkedid
-                call_result_override = cdr.kommo_call_result
-                call_status_override = cdr.kommo_call_status
-                if cdr.caller_id and not payload.get("call_from_label"):
-                    payload["call_from_label"] = cdr.caller_id
-                # Note-only metadata from CDR — upload only when recording is not expected.
-                if not recording_wanted_now or not cdr_may_have_recording or recording_definitely_absent:
-                    cdr_note_created = True
-                kommo_jobs_db.update_job(job_id, payload_json=payload)
-                print(
-                    f"[kommo_call_worker] job {job_id}: CDR note "
-                    f"linkedid={cdr.linkedid} disposition={cdr.disposition} "
-                    f"result={cdr.kommo_call_result} note_only={cdr_note_created}",
-                    flush=True,
-                )
-            elif _should_wait_for_pbx_cdr(payload, pbx_billsec=pbx_billsec):
-                if _schedule_recording_retry(
-                    job_id,
-                    payload,
-                    reason="Waiting for Miko CDR",
-                    log_msg=(
-                        f"[kommo_call_worker] job {job_id}: CDR not ready "
-                        f"(queue={kommo_jobs_db.count_pending_recording_jobs()})"
-                    ),
-                ):
-                    return
-                retry = int(payload.get("pbx_recording_retry") or 0)
-                log.warning("job %s: CDR not matched after %s attempts", job_id, retry)
-                print(
-                    f"[kommo_call_worker] job {job_id}: CDR not matched after {retry} attempts "
-                    f"— will fail instead of empty Kommo card",
-                    flush=True,
-                )
+                if not _pbx_recording_still_expected(payload, cdr):
+                    print(
+                        f"[kommo_call_worker] job {job_id}: CDR matched without recording "
+                        f"(disposition={cdr.disposition}) — Kommo note only",
+                        flush=True,
+                    )
 
-        recording_wanted = _recording_upload_wanted(payload, pbx_billsec=pbx_billsec)
+            recording_wait_reason = "Waiting for Miko CDR"
+            if resolution.cdr_info and not resolution.recording_path:
+                if _pbx_recording_still_expected(payload, resolution.cdr_info):
+                    recording_wait_reason = "Waiting for Miko recording"
+
+            if bool(payload.get("enable_recording_upload", True)) and bool(
+                payload.get("was_answered")
+            ):
+                need_pbx_recording = not audio_path and (
+                    resolution.cdr_info is None
+                    or (
+                        resolution.cdr_info is not None
+                        and not resolution.recording_path
+                        and _pbx_recording_still_expected(payload, resolution.cdr_info)
+                    )
+                )
+                if need_pbx_recording:
+                    retry = int(payload.get("pbx_recording_retry") or 0)
+                    if retry < MAX_PBX_RECORDING_JOB_RETRIES:
+                        payload["pbx_recording_retry"] = retry + 1
+                        wait_idx = min(retry, len(JOB_RETRY_WAITS_SEC) - 1)
+                        wait_sec = JOB_RETRY_WAITS_SEC[wait_idx]
+                        payload["retry_after"] = (
+                            datetime.now(timezone.utc) + timedelta(seconds=wait_sec)
+                        ).isoformat()
+                        kommo_jobs_db.update_job(
+                            job_id,
+                            status="queued",
+                            payload_json=payload,
+                            reason=(
+                                f"{recording_wait_reason} "
+                                f"(retry {retry + 1}/{MAX_PBX_RECORDING_JOB_RETRIES}, next in {wait_sec}s)"
+                            ),
+                        )
+                        msg = (
+                            f"[kommo_call_worker] job {job_id}: {recording_wait_reason}, "
+                            f"retry {retry + 1}/{MAX_PBX_RECORDING_JOB_RETRIES} in {wait_sec}s (non-blocking)"
+                        )
+                        log.info(msg)
+                        print(msg, flush=True)
+                        return
+                    log.warning("job %s: CDR not matched after %s attempts", job_id, retry)
+                    print(
+                        f"[kommo_call_worker] job {job_id}: CDR/recording not ready after {retry} attempts "
+                        f"— will create Kommo call note from client data",
+                        flush=True,
+                    )
+
+        inbound_defer = int(payload.get("inbound_unanswered_defer") or 0)
+        if (
+            prefer_miko
+            and bool(payload.get("is_incoming"))
+            and not bool(payload.get("was_answered"))
+            and not payload.get("pbx_linkedid")
+            and not (audio_path and Path(audio_path).is_file())
+            and inbound_defer < INBOUND_UNANSWERED_DEFER_MAX
+        ):
+            wait_sec = INBOUND_UNANSWERED_DEFER_WAITS_SEC[inbound_defer]
+            payload["inbound_unanswered_defer"] = inbound_defer + 1
+            payload["retry_after"] = (
+                datetime.now(timezone.utc) + timedelta(seconds=wait_sec)
+            ).isoformat()
+            kommo_jobs_db.update_job(
+                job_id,
+                status="queued",
+                payload_json=payload,
+                reason=(
+                    f"Deferring missed inbound note ({inbound_defer + 1}/"
+                    f"{INBOUND_UNANSWERED_DEFER_MAX}) — waiting for PBX CDR"
+                ),
+            )
+            msg = (
+                f"[kommo_call_worker] job {job_id}: defer missed inbound "
+                f"{inbound_defer + 1}/{INBOUND_UNANSWERED_DEFER_MAX} in {wait_sec}s"
+            )
+            log.info(msg)
+            print(msg, flush=True)
+            return
+
+        recording_wanted = bool(payload.get("enable_recording_upload", True)) and bool(
+            payload.get("was_answered")
+        )
         has_audio = bool(audio_path and Path(audio_path).is_file())
-        max_retries = _effective_max_recording_retries()
-        retries_exhausted = int(payload.get("pbx_recording_retry") or 0) >= max_retries
+        retries_exhausted = int(payload.get("pbx_recording_retry") or 0) >= MAX_PBX_RECORDING_JOB_RETRIES
 
         if has_audio:
             file_hash = _sha256_file(audio_path or "")
@@ -578,165 +469,49 @@ async def _process_job(
                     phone=(payload.get("phone") or "").strip(),
                     lead_id=int(lead_hint) if lead_hint else None,
                 ):
-                    owner = kommo_jobs_db.get_recording_hash_owner(extension, file_hash)
-                    owner_session = (owner or {}).get("session_id") if owner else None
-                    this_session = payload.get("session_id")
-                    if owner_session and this_session and owner_session == this_session:
-                        print(
-                            f"[kommo_call_worker] job {job_id}: duplicate audio hash "
-                            f"{file_hash[:12]}… — skipping duplicate submit",
-                            flush=True,
-                        )
-                        kommo_jobs_db.update_job(
-                            job_id,
-                            status="skipped",
-                            reason="Duplicate recording (same audio already uploaded)",
-                            payload_json=payload,
-                        )
-                        return
                     print(
-                        f"[kommo_call_worker] job {job_id}: audio hash {file_hash[:12]}… "
-                        f"matches another call (owner session={owner_session or '-'}, "
-                        f"this session={this_session or '-'}) — note only, no recording",
+                        f"[kommo_call_worker] job {job_id}: duplicate audio hash "
+                        f"{file_hash[:12]}… — skipping recording upload",
                         flush=True,
                     )
-                    audio_path = None
-                    has_audio = False
-                    upload_source = None
+                    kommo_jobs_db.update_job(
+                        job_id,
+                        status="skipped",
+                        reason="Duplicate recording (same audio already uploaded)",
+                        payload_json=payload,
+                    )
+                    return
 
-        if recording_wanted and not has_audio and cdr_may_have_recording and not recording_definitely_absent:
-            if not retries_exhausted and _schedule_recording_retry(
-                job_id,
-                payload,
-                reason="Waiting for PBX recording before Kommo upload",
-                log_msg=(
-                    f"[kommo_call_worker] job {job_id}: deferring Kommo upload until recording "
-                    f"is ready (queue={kommo_jobs_db.count_pending_recording_jobs()})"
-                ),
-            ):
-                return
-            kommo_jobs_db.update_job(
-                job_id,
-                status="failed",
-                reason=(
-                    "PBX recording not ready after retries "
-                    f"({int(payload.get('pbx_recording_retry') or 0)}/{max_retries}); "
-                    "no empty Kommo card created"
-                ),
-                payload_json=payload,
-            )
-            print(
-                f"[kommo_call_worker] job {job_id} failed: recording still missing after "
-                f"{max_retries} retries — empty card blocked",
-                flush=True,
-            )
-            return
-
-        if recording_wanted and not has_audio and not cdr_note_created and not retries_exhausted:
-            if _schedule_recording_retry(
-                job_id,
-                payload,
-                reason="Waiting for Miko CDR/recording",
-                log_msg=(
-                    f"[kommo_call_worker] job {job_id}: deferring until PBX CDR/recording "
-                    f"(queue={kommo_jobs_db.count_pending_recording_jobs()})"
-                ),
-            ):
-                return
+        if recording_wanted and not has_audio and not retries_exhausted and not cdr_note_created:
             kommo_jobs_db.update_job(
                 job_id,
                 status="failed",
                 reason="PBX recording not found or not ready",
-                payload_json=payload,
             )
             print(f"[kommo_call_worker] job {job_id} failed: no PBX recording", flush=True)
             return
 
-        if recording_wanted and not has_audio and cdr_note_created:
-            talk_sec = (
-                int(pbx_billsec)
-                if pbx_billsec and int(pbx_billsec) > 0
-                else int(payload.get("duration_seconds") or 0)
-            )
-            if (
-                talk_sec >= 5
-                and cdr_may_have_recording
-                and not recording_definitely_absent
-            ):
-                if not retries_exhausted and _schedule_recording_retry(
-                    job_id,
-                    payload,
-                    reason="Waiting for Miko recording",
-                    log_msg=(
-                        f"[kommo_call_worker] job {job_id}: answered call "
-                        f"({talk_sec}s) — deferring note until recording is ready"
-                    ),
-                ):
-                    return
-            # IVR reject / cancel / no talk — intentional note-only card.
+        if recording_wanted and not has_audio and (retries_exhausted or cdr_note_created):
             audio_path = None
             upload_source = None
-        elif recording_wanted and not has_audio and retries_exhausted:
-            sibling = kommo_jobs_db.find_miko_recording_sibling_job(
-                extension,
-                (payload.get("phone") or "").strip(),
-                exclude_job_id=job_id,
-            )
-            if sibling and (
-                sibling.get("upload_source") == "miko_pbx"
-                or (sibling.get("recording_path") or "").strip()
-            ):
-                kommo_jobs_db.update_job(
-                    job_id,
-                    status="skipped",
-                    reason=(
-                        f"Duplicate submit — recording already uploaded by job {sibling['id']}"
-                    ),
-                    payload_json=payload,
-                )
-                print(
-                    f"[kommo_call_worker] job {job_id}: skipped duplicate; "
-                    f"recording already on job {sibling['id']}",
-                    flush=True,
-                )
-                return
-            kommo_jobs_db.release_pbx_linkedid_claims_for_job(job_id)
-            client_answered = bool(payload.get("was_answered")) or bool(
-                payload.get("answer_time")
-            )
-            client_dur = int(payload.get("duration_seconds") or 0)
-            # Answered / long outbound: CDR match can fail (clock skew, trunk leg) but
-            # client metadata is still worth a Kommo note — better than a hard fail.
-            if client_answered or (client_dur >= 8 and not bool(payload.get("is_incoming"))):
-                print(
-                    f"[kommo_call_worker] job {job_id}: no PBX CDR/recording after "
-                    f"{max_retries} retries — client fallback note "
-                    f"(answered={client_answered}, duration={client_dur}s)",
-                    flush=True,
-                )
-            else:
-                kommo_jobs_db.update_job(
-                    job_id,
-                    status="failed",
-                    reason=(
-                        "PBX CDR/recording unavailable after retries "
-                        f"({int(payload.get('pbx_recording_retry') or 0)}/{max_retries}); "
-                        "no empty Kommo card created"
-                    ),
-                    payload_json=payload,
-                )
-                print(
-                    f"[kommo_call_worker] job {job_id} failed: no CDR/recording after retries "
-                    f"— empty card blocked",
-                    flush=True,
-                )
-                return
 
         if not bool(payload.get("enable_recording_upload", True)):
             audio_path = None
 
-        # Lead selection is done inside process_call (contact → newest open lead → fallback).
-        # Do not pre-resolve lead_id here — an early phone-only search picks stale leads.
+        if not payload.get("lead_id"):
+            phone = (payload.get("phone") or "").strip()
+            if phone:
+                try:
+                    lead_id, _contact_id = await client.resolve_upload_target(phone)
+                    if lead_id:
+                        payload["lead_id"] = lead_id
+                        print(
+                            f"[kommo_call_worker] job {job_id}: resolved lead_id="
+                            f"{lead_id} for {phone}",
+                            flush=True,
+                        )
+                except Exception as exc:
+                    log.warning("job %s lead lookup failed: %s", job_id, exc)
 
         client_duration = int(payload.get("duration_seconds") or 0)
         duration_seconds = pbx_billsec if pbx_billsec and pbx_billsec > 0 else client_duration
@@ -756,31 +531,26 @@ async def _process_job(
             call_time=_parse_call_time(payload.get("call_time") or ""),
             lead_id=payload.get("lead_id"),
             call_from_label=payload.get("call_from_label"),
+            did=(payload.get("did") or "").strip() or None,
             upload_source=upload_source,
             call_result=call_result_override,
             call_status=call_status_override,
-            did=payload.get("pbx_did") or payload.get("did"),
-            linkedid=payload.get("pbx_linkedid"),
         )
 
         final_source = upload_source or outcome.upload_source
-        note_without_recording = recording_wanted and not has_audio
+        note_without_recording = (recording_wanted and not has_audio and cdr_note_created) or (
+            recording_wanted and not has_audio and retries_exhausted
+        )
         if outcome.success and outcome.upload_status == "uploaded":
             reason = outcome.reason
             if note_without_recording and cdr_note_created:
                 reason = f"Call note from PBX CDR ({call_result_override or 'no recording'})"
             elif note_without_recording:
-                reason = "Call note from client; PBX CDR/recording unavailable"
+                reason = "Call note created; PBX recording unavailable"
             kommo_jobs_db.update_job(
                 job_id,
                 status="uploaded",
                 lead_id=outcome.lead_id,
-                contact_id=outcome.contact_id,
-                crm_entity=(
-                    "lead"
-                    if outcome.lead_id
-                    else ("contact" if outcome.contact_id else None)
-                ),
                 upload_source=final_source,
                 reason=reason,
                 payload_json=payload,
@@ -798,16 +568,17 @@ async def _process_job(
                 )
             print(
                 f"[kommo_call_worker] job {job_id} uploaded lead_id={outcome.lead_id} "
-                f"contact_id={outcome.contact_id} "
                 f"source={final_source} linkedid={payload.get('pbx_linkedid') or '-'}",
                 flush=True,
             )
         elif outcome.upload_status == "not_uploaded":
+            keep_recording_files = True
             kommo_jobs_db.update_job(
                 job_id,
                 status="failed",
                 lead_id=outcome.lead_id,
                 upload_source=final_source,
+                recording_path=audio_path if has_audio else job.get("recording_path"),
                 reason=outcome.reason or "Recording upload failed",
             )
             print(
@@ -831,7 +602,8 @@ async def _process_job(
         kommo_jobs_db.update_job(job_id, status="failed", reason=str(exc))
     finally:
         await client.close()
-        _cleanup_job_files(job_id)
+        if not keep_recording_files:
+            _cleanup_job_files(job_id)
 
 
 def _cleanup_job_files(job_id: str) -> None:

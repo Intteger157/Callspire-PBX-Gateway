@@ -478,6 +478,10 @@
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>
                         Desktop app &amp; TURN
                     </button>
+                    <button type="button" class="nav-sub" data-page="mobile-releases" onclick="navigate('mobile-releases',this)">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/></svg>
+                        Mobile app updates
+                    </button>
                 </div>
             </div>
             <div class="nav-group open" data-group="system">
@@ -937,6 +941,34 @@
             </div>
         </div>
 
+        <div id="page-mobile-releases" class="page">
+            <div class="page-head">
+                <div class="page-eyebrow">Softphones</div>
+                <h2>Mobile app updates</h2>
+                <p class="subtitle">Proxy private GitHub Releases (IGCaller.apk) for authenticated mobile users. GitHub token stays on this server only.</p>
+            </div>
+            <div class="card" style="max-width:640px">
+                <label style="display:flex;align-items:center;gap:8px;margin-top:0">
+                    <input type="checkbox" id="mobile-releases-enabled">
+                    Enable mobile update proxy
+                </label>
+                <div class="row">
+                    <div><label>GitHub owner</label><input type="text" id="mobile-releases-owner" placeholder="IntermarkGlobal"></div>
+                    <div><label>GitHub repo</label><input type="text" id="mobile-releases-repo" placeholder="IntermarkCaller"></div>
+                </div>
+                <label>Asset name</label>
+                <input type="text" id="mobile-releases-asset" placeholder="IGCaller.apk">
+                <label>GitHub token (PAT, repo read)</label>
+                <input type="password" id="mobile-releases-token" placeholder="Leave blank to keep current token" autocomplete="off">
+                <p id="mobile-releases-token-hint" class="subtitle" style="margin-top:8px;font-size:12px"></p>
+                <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:16px">
+                    <button type="button" class="btn" onclick="saveMobileReleasesConfig()">Save</button>
+                    <button type="button" class="btn btn-outline" onclick="testMobileReleases()">Test latest release</button>
+                </div>
+                <div id="mobile-releases-status" style="margin-top:12px"></div>
+            </div>
+        </div>
+
         <!-- ==================== USERS PAGE ==================== -->
         <div id="page-users" class="page active">
             <div class="page-head page-head--compact">
@@ -1351,6 +1383,8 @@ function navigate(page, btn, opts) {
         loadConnectionStatus('webrtc');
     } else if (page === 'settings-softphone-app') {
         loadSoftphoneAppSettings();
+    } else if (page === 'mobile-releases') {
+        loadMobileReleasesConfig();
     } else if (page === 'settings-auth') {
         loadJwtConfig();
     } else if (page === 'settings-kommo') {
@@ -1384,7 +1418,7 @@ function applyHashRoute() {
         raw = 'settings-ami';
         try { if (history.replaceState) history.replaceState(null, '', '#settings-ami'); } catch (_) { /* ignore */ }
     }
-    const allowed = ['dashboard', 'users', 'numbers', 'trunks', 'softphone-accounts', 'settings-ami', 'settings-auth', 'settings-kommo', 'settings-webrtc', 'settings-softphone-app', 'kommo-logs', 'kommo-entity-rules'];
+    const allowed = ['dashboard', 'users', 'numbers', 'trunks', 'softphone-accounts', 'settings-ami', 'settings-auth', 'settings-kommo', 'settings-webrtc', 'settings-softphone-app', 'mobile-releases', 'kommo-logs', 'kommo-entity-rules'];
     const page = allowed.includes(raw) ? raw : 'users';
     const cur = document.querySelector('.page.active');
     if (cur && cur.id === 'page-' + page) return;
@@ -1521,6 +1555,57 @@ async function saveSoftphoneAppSettings() {
         loadSoftphoneAppSettings();
         setTimeout(() => el.innerHTML = '', 3000);
     } catch(e) { el.innerHTML = '<span class="error-msg">'+e.message+'</span>'; }
+}
+
+async function loadMobileReleasesConfig() {
+    const el = document.getElementById('mobile-releases-status');
+    const hint = document.getElementById('mobile-releases-token-hint');
+    try {
+        const c = await api('GET', '/api/admin/mobile-releases/config');
+        document.getElementById('mobile-releases-enabled').checked = !!c.enabled;
+        document.getElementById('mobile-releases-owner').value = c.github_owner || '';
+        document.getElementById('mobile-releases-repo').value = c.github_repo || '';
+        document.getElementById('mobile-releases-asset').value = c.asset_name || 'IGCaller.apk';
+        document.getElementById('mobile-releases-token').value = '';
+        if (hint) {
+            hint.textContent = c.token_configured
+                ? ('Token configured via ' + (c.token_source || 'db') + '. Leave password blank to keep it.')
+                : 'No GitHub token yet — add a PAT with repo read access.';
+        }
+        if (el) el.innerHTML = '';
+    } catch (e) {
+        console.error(e);
+        if (el) el.innerHTML = '<span class="error-msg">' + escHtml(e.message) + '</span>';
+    }
+}
+async function saveMobileReleasesConfig() {
+    const el = document.getElementById('mobile-releases-status');
+    try {
+        const body = {
+            enabled: document.getElementById('mobile-releases-enabled').checked,
+            github_owner: document.getElementById('mobile-releases-owner').value.trim(),
+            github_repo: document.getElementById('mobile-releases-repo').value.trim(),
+            asset_name: document.getElementById('mobile-releases-asset').value.trim() || 'IGCaller.apk',
+        };
+        const token = document.getElementById('mobile-releases-token').value.trim();
+        if (token) body.github_token = token;
+        await api('POST', '/api/admin/mobile-releases/config', body);
+        el.innerHTML = '<span class="success">Saved.</span>';
+        loadMobileReleasesConfig();
+        setTimeout(function() { el.innerHTML = ''; }, 3000);
+    } catch (e) {
+        el.innerHTML = '<span class="error-msg">' + escHtml(e.message) + '</span>';
+    }
+}
+async function testMobileReleases() {
+    const el = document.getElementById('mobile-releases-status');
+    el.innerHTML = '<span class="conn-detail">Testing GitHub…</span>';
+    try {
+        const r = await api('GET', '/api/admin/mobile-releases/test');
+        el.innerHTML = '<span class="success">Latest: ' + escHtml(r.tag || '') + ' · v' + escHtml(r.version || '') + ' · ' + escHtml(r.asset || '') + ' (' + escHtml(String(r.size || 0)) + ' bytes)</span>';
+    } catch (e) {
+        el.innerHTML = '<span class="error-msg">' + escHtml(e.message) + '</span>';
+    }
 }
 
 function toggleJwtNeverExpire() {

@@ -56,6 +56,7 @@ from ami_client import ami_originate
 from connection_check import check_ami_tcp, check_wss_tls
 from miko_rest_client import MikoRestClient, MikoRestConfig, MikoRestError
 from app_kommo import register_kommo_routes
+from app_mobile_releases import register_mobile_releases_routes
 import kommo_service
 
 try:
@@ -207,9 +208,16 @@ async def lifespan(app: FastAPI):
         + ("never expire" if jwt_days == 0 else f"{jwt_days} day(s)")
     )
 
-    from app_kommo import ensure_kommo_workers_started
+    try:
+        from app_kommo import ensure_kommo_workers_started
 
-    await ensure_kommo_workers_started()
+        await ensure_kommo_workers_started()
+    except ImportError:
+        print(
+            "[pbx-gateway] app_kommo.ensure_kommo_workers_started missing — "
+            "deploy app_kommo.py from the same bundle as app.py",
+            flush=True,
+        )
 
     try:
         yield
@@ -802,12 +810,20 @@ async def _kommo_copy_sqlite_recording(
             linkedid=linkedid,
             **_cdr_docker_kwargs(),
         )
-    except Exception:
+    except Exception as exc:
+        print(
+            f"[kommo_recording] find_recording_path failed linkedid={linkedid}: {exc}",
+            flush=True,
+        )
         return False
     if not file_path:
         return False
     src = Path(file_path)
     if not src.is_file():
+        print(
+            f"[kommo_recording] recording file missing on disk linkedid={linkedid} path={src}",
+            flush=True,
+        )
         return False
     if not await wait_recording_file_stable(src, billsec=billsec):
         print(
@@ -816,8 +832,14 @@ async def _kommo_copy_sqlite_recording(
             flush=True,
         )
         return False
-    shutil.copy2(src, dest)
-    return dest.is_file() and dest.stat().st_size > 0
+    actual_dest = dest.parent / src.name
+    if dest != actual_dest:
+        try:
+            dest.unlink(missing_ok=True)
+        except OSError:
+            pass
+    shutil.copy2(src, actual_dest)
+    return actual_dest.is_file() and actual_dest.stat().st_size > 0
 
 
 async def _kommo_verify_linkedid(linkedid: str, extension: str) -> bool:
@@ -929,6 +951,9 @@ async def _kommo_internal_download_recording(
         except MikoRestError:
             cdr_row = None
         if cdr_row and (cdr_row.get("playback_url") or "").strip():
+            hint = _recording_filename_hint(cdr_row)
+            if hint and Path(hint).suffix:
+                dest = dest.with_suffix(Path(hint).suffix)
             try:
                 upstream = await miko_rest.stream_cdr_playback(cdr_row["playback_url"])
             except MikoRestError:
@@ -2382,6 +2407,16 @@ register_kommo_routes(
     download_recording=_kommo_internal_download_recording,
     verify_linkedid=_kommo_verify_linkedid,
     extension_from_token=_extension_from_token,
+)
+
+register_mobile_releases_routes(
+    app,
+    cfg=cfg,
+    require_admin=require_admin,
+    require_jwt=require_jwt,
+    templates=templates,
+    html_context=_html_context,
+    public_base_url=lambda request: (cfg.get("public_url") or str(request.base_url)).rstrip("/"),
 )
 # ======================= Admin panel (HTML) =======================
 
