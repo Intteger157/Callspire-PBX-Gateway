@@ -1476,48 +1476,47 @@ class KommoCrmClient:
         note_type = "call_in" if is_incoming else "call_out"
         did_clean = (did or "").strip()
 
-        # Match desktop AmoCrmService: retry without call_result, then without did.
-        for try_result in (bool(call_result), False):
-            for try_did in (bool(did_clean), False):
-                params: dict[str, Any] = {
-                    "uniq": uniq,
-                    "duration": duration_seconds,
-                    "source": "Callspire",
-                    "phone": phone,
-                }
-                if try_did and did_clean:
-                    params["did"] = did_clean
-                if audio_link:
-                    params["link"] = audio_link
-                if try_result and call_result:
-                    params["call_result"] = call_result
-                    if call_status is not None:
-                        params["call_status"] = call_status
+        # Match desktop AmoCrmService: at most one retry without call_result on HTTP 400.
+        try_call_result = bool(call_result)
+        while True:
+            params: dict[str, Any] = {
+                "uniq": uniq,
+                "duration": duration_seconds,
+                "source": "Callspire",
+                "phone": phone,
+            }
+            if did_clean:
+                params["did"] = did_clean
+            if audio_link:
+                params["link"] = audio_link
+            if try_call_result and call_result:
+                params["call_result"] = call_result
+                if call_status is not None:
+                    params["call_status"] = call_status
 
-                body = [
-                    {
-                        "note_type": note_type,
-                        "created_by": user_id,
-                        "responsible_user_id": user_id,
-                        "params": params,
-                    }
-                ]
-                resp = await self._request(
-                    "POST", f"/{entity}/{entity_id}/notes", json_body=body
-                )
-                if resp.status_code in (200, 201):
+            body = [
+                {
+                    "note_type": note_type,
+                    "created_by": user_id,
+                    "responsible_user_id": user_id,
+                    "params": params,
+                }
+            ]
+            resp = await self._request(
+                "POST", f"/{entity}/{entity_id}/notes", json_body=body
+            )
+            if resp.status_code in (200, 201):
+                return True
+            detail = (resp.text or "")[:300]
+            if try_call_result and resp.status_code == 400:
+                if "uniq" in detail.lower() or "duplicate" in detail.lower():
                     return True
-                if resp.status_code == 400:
-                    if try_result:
-                        break
-                    if try_did:
-                        continue
-                detail = (resp.text or "")[:300]
-                log.warning("call note failed: %s %s", resp.status_code, detail)
-                print(
-                    f"[kommo_crm] call note failed HTTP {resp.status_code} "
-                    f"{entity}/{entity_id}: {detail}",
-                    flush=True,
-                )
-                return False
-        return False
+                try_call_result = False
+                continue
+            log.warning("call note failed: %s %s", resp.status_code, detail)
+            print(
+                f"[kommo_crm] call note failed HTTP {resp.status_code} "
+                f"{entity}/{entity_id}: {detail}",
+                flush=True,
+            )
+            return False

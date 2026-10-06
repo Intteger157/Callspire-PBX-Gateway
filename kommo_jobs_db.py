@@ -214,6 +214,54 @@ def update_job(job_id: str, **fields: Any) -> Optional[dict[str, Any]]:
     return get_job(job_id)
 
 
+def attach_client_recording(job_id: str, recording_path: str) -> bool:
+    """Store browser recording without requeueing a job another worker may hold."""
+    now = _now_iso()
+    with _connect() as conn:
+        cur = conn.execute(
+            """
+            UPDATE kommo_call_jobs
+            SET recording_path = ?, upload_source = 'client', updated_at = ?
+            WHERE id = ?
+              AND status IN ('waiting_recording', 'processing', 'queued')
+            """,
+            (recording_path, now, job_id),
+        )
+        conn.commit()
+        return cur.rowcount == 1
+
+
+def try_begin_kommo_upload(job_id: str) -> bool:
+    """Ensure only one worker posts the Kommo call note for this job."""
+    stamp = _now_iso()
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT payload_json FROM kommo_call_jobs WHERE id = ?",
+            (job_id,),
+        ).fetchone()
+        if not row:
+            return False
+        payload = json.loads(row["payload_json"] or "{}")
+        if payload.get("kommo_upload_started"):
+            return False
+        payload["kommo_upload_started"] = stamp
+        cur = conn.execute(
+            """
+            UPDATE kommo_call_jobs
+            SET payload_json = ?, updated_at = ?
+            WHERE id = ?
+              AND status NOT IN ('uploaded', 'skipped')
+              AND (
+                json_extract(payload_json, '$.kommo_upload_started') IS NULL
+                OR trim(CAST(json_extract(payload_json, '$.kommo_upload_started') AS TEXT)) = ''
+              )
+            """,
+            (json.dumps(payload), stamp, job_id),
+        )
+        conn.commit()
+        return cur.rowcount == 1
+
+
 def count_pending_recording_jobs(*, include_processing: bool = False) -> int:
     """Jobs waiting for a worker or for Miko CDR/recording (queue depth indicator)."""
     statuses = ["queued", "waiting_recording"]
@@ -1032,6 +1080,7 @@ def reset_job_for_reupload(
     payload.pop("retry_after", None)
     payload.pop("pbx_linkedid", None)
     payload.pop("recording_sha256", None)
+    payload.pop("kommo_upload_started", None)
     payload["pbx_recording_retry"] = 0
     payload["admin_reupload"] = True
     if preserved_linkedid:

@@ -740,12 +740,16 @@ def register_kommo_routes(
         with dest.open("wb") as out:
             shutil.copyfileobj(file.file, out)
 
-        kommo_jobs_db.update_job(
-            job_id,
-            recording_path=str(dest),
-            upload_source="client",
-            status="queued",
-        )
+        attached = kommo_jobs_db.attach_client_recording(job_id, str(dest))
+        if not attached:
+            job = kommo_jobs_db.get_job(job_id)
+            if job and job.get("status") in ("uploaded", "skipped"):
+                return {"ok": True, "path": str(dest), "already_uploaded": True}
+            kommo_jobs_db.update_job(
+                job_id,
+                recording_path=str(dest),
+                upload_source="client",
+            )
         await _ensure_workers()
         return {"ok": True, "path": str(dest)}
 

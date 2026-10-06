@@ -200,6 +200,14 @@ async def _process_job(
     payload = dict(job["payload"])
     extension = job["extension"]
 
+    fresh = kommo_jobs_db.get_job(job_id)
+    if fresh and fresh.get("status") in ("uploaded", "skipped"):
+        print(
+            f"[kommo_call_worker] job {job_id}: skip — already {fresh.get('status')}",
+            flush=True,
+        )
+        return
+
     session = await get_session_for_extension(extension)
     if not session or not session.get("access_token"):
         kommo_jobs_db.update_job(job_id, status="failed", reason="Kommo session unavailable")
@@ -239,7 +247,6 @@ async def _process_job(
         prefer_miko = connection_slot != "secondary" and not client_recording
 
         if client_recording and not audio_path:
-            kommo_jobs_db.update_job(job_id, status="waiting_recording")
             waited = 0
             while waited < CLIENT_RECORDING_WAIT_SECONDS:
                 await asyncio.sleep(2.0)
@@ -451,6 +458,19 @@ async def _process_job(
             print(msg, flush=True)
             return
 
+        if client_recording and not bool(payload.get("was_answered")):
+            client_dur = int(payload.get("duration_seconds") or 0)
+            if client_dur >= 3 and audio_path and Path(audio_path).is_file():
+                payload["was_answered"] = True
+                if not payload.get("answer_time") and payload.get("call_end_time"):
+                    payload["answer_time"] = payload.get("call_time")
+                kommo_jobs_db.update_job(job_id, payload_json=payload)
+                print(
+                    f"[kommo_call_worker] job {job_id}: infer was_answered from "
+                    f"client recording ({client_dur}s)",
+                    flush=True,
+                )
+
         recording_wanted = bool(payload.get("enable_recording_upload", True)) and bool(
             payload.get("was_answered")
         )
@@ -521,6 +541,14 @@ async def _process_job(
                 f"→ {duration_seconds}s (PBX CDR)",
                 flush=True,
             )
+
+        if not kommo_jobs_db.try_begin_kommo_upload(job_id):
+            print(
+                f"[kommo_call_worker] job {job_id}: skip Kommo upload — "
+                f"already started or finished",
+                flush=True,
+            )
+            return
 
         outcome: ProcessCallOutcome = await client.process_call(
             payload.get("phone") or "",
